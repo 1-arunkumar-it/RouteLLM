@@ -1,6 +1,6 @@
 # RouteLLM Roadmap
 
-Only Milestone 0 is currently authorized for implementation. Later milestones describe sequencing, not permission for speculative work.
+Milestone 3 is complete. Milestone 4 requires explicit human approval before implementation. Later milestones describe sequencing, not permission for speculative work.
 
 ## Milestone 0 — Python project foundation
 
