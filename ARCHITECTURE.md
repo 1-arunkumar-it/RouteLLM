@@ -2,7 +2,7 @@
 
 ## Purpose
 
-RouteLLM is a local, explainable routing layer. The baseline categorizes a prompt and selects a logical route without calling an LLM or network service. It is deliberately layered so that later model providers do not alter core routing behavior.
+RouteLLM is a local, explainable routing layer. The baseline categorizes a prompt and selects a logical route without calling an LLM or network service. It is deliberately layered so that later model providers do not alter core routing behavior. Routing proceeds from cheapest reliable mechanism to most expensive: validated keyword rules, then a calibrated classifier, then a fallback.
 
 ## Layers and dependency direction
 
@@ -22,8 +22,8 @@ The operational layers are CLI, Application, Domain, Preprocessing/Signals/Class
 | Domain | Define stable concepts such as `RouteDecision`, categories, routes, and signals. | Python standard library only. |
 | Preprocessing | Normalize and prepare prompt text while preserving useful technical terms. | Domain and approved NLP libraries when introduced. |
 | Signals | Extract keyword and phrase evidence for routing and explanation. | Domain, configuration, standard library. |
-| Classification | Build features, train/predict with interchangeable traditional ML models, and expose confidence metadata. | Domain, configuration, approved ML/NLP libraries. |
-| Routing | Apply route policy to classification and signal results. | Domain and configuration; never providers. |
+| Classification | Build features, train/predict with interchangeable traditional ML models, expose calibrated confidence metadata, and persist a `CascadeModel`. | Domain, configuration, approved ML/NLP libraries. |
+| Routing | Apply the cascade policy to signal and classifier results: validated rules, then calibrated confidence against a validated threshold, then fallback. | Domain and configuration; never providers. |
 | Providers | Map a logical route to executable local/remote services. Deferred until Milestone 6. | Domain, configuration, provider-specific clients. |
 
 The CLI must never directly perform preprocessing, classification, routing, or provider calls. It calls the application layer, which orchestrates the use case and returns a `RouteDecision` for rendering.
@@ -67,6 +67,16 @@ Prompt
 ```
 
 `RouteDecision` is the application boundary: it contains the selected category, confidence metadata, logical route, and evidence needed for truthful explanation. The renderer does not infer or invent rationale.
+
+### Cascade policy
+
+`RouteDecision.source` records which mechanism made the decision, so the reason never overstates the evidence:
+
+1. **Rules** — keyword signals decide immediately when the resulting category had at least `rule_override_min_precision` (default 0.90) precision on the validation split. Confidence is absent (`None`); a rule match is not presented as probability.
+2. **Classifier** — otherwise the benchmark-selected Linear SVM, wrapped in `CalibratedClassifierCV`, predicts a category. The calibrated probability must be at or above a threshold chosen from the validation split (maximizing cascade macro F1 over a 0.05 grid, ties resolved toward the higher threshold).
+3. **Fallback** — below threshold, the decision is `unknown`/`fallback`. The real confidence is still reported so uncertainty is never hidden.
+
+Training calibrates on the train split only; rule precision and threshold selection use the validation split; the test split measures the final cascade (metrics, override rate, fallback rate). `RouteService` remains rule-only when no model is provided.
 
 Future execution flow is separate:
 

@@ -4,14 +4,18 @@ import argparse
 import sys
 
 from routellm import __version__
-from routellm.application.classifier_service import ClassifierService
+from routellm.application.classifier_service import ClassifierService, load_model
 from routellm.application.route_service import RouteService
+from routellm.classification.cascade_model import CascadeModel
 from routellm.cli.render import (
     render_benchmark_report,
+    render_cascade_evaluation_report,
+    render_cascade_train_report,
     render_decision,
     render_evaluation_report,
     render_train_report,
 )
+from routellm.evaluation.cascade_report import CascadeEvaluationReport
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,6 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
         "prompt",
         nargs="+",
         help="natural-language prompt; words are joined with spaces",
+    )
+    route_parser.add_argument(
+        "--model",
+        default=None,
+        help="path to a cascade model for confidence-based routing "
+        "(default: rule-based routing only)",
     )
     train_parser = subparsers.add_parser(
         "train",
@@ -84,6 +94,20 @@ def build_parser() -> argparse.ArgumentParser:
         default="models/benchmarks",
         help="directory for benchmark artifacts and report (default: models/benchmarks)",
     )
+    cascade_parser = subparsers.add_parser(
+        "cascade",
+        help="train the calibrated cascade routing model",
+    )
+    cascade_parser.add_argument(
+        "--dataset",
+        default="data/datasets/prompts.csv",
+        help="labeled CSV dataset (default: data/datasets/prompts.csv)",
+    )
+    cascade_parser.add_argument(
+        "--out",
+        default="models/cascade.joblib",
+        help="path to write the cascade model (default: models/cascade.joblib)",
+    )
     return parser
 
 
@@ -96,7 +120,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "route":
         prompt = " ".join(args.prompt)
-        decision = RouteService().route(prompt)
+        model = None
+        if args.model:
+            try:
+                model = load_model(args.model)
+            except (ValueError, OSError) as error:
+                print(f"route failed: {error}", file=sys.stderr)
+                return 1
+            if not isinstance(model, CascadeModel):
+                print(
+                    f"route failed: {args.model} is not a cascade model; "
+                    "train one with 'routellm cascade'.",
+                    file=sys.stderr,
+                )
+                return 1
+        decision = RouteService(model=model).route(prompt)
         render_decision(decision)
         return 0
     if args.command == "train":
@@ -117,7 +155,10 @@ def main(argv: list[str] | None = None) -> int:
         except (ValueError, OSError) as error:
             print(f"evaluate failed: {error}", file=sys.stderr)
             return 1
-        render_evaluation_report(report)
+        if isinstance(report, CascadeEvaluationReport):
+            render_cascade_evaluation_report(report)
+        else:
+            render_evaluation_report(report)
         return 0
     if args.command == "benchmark":
         try:
@@ -126,5 +167,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"benchmark failed: {error}", file=sys.stderr)
             return 1
         render_benchmark_report(result)
+        return 0
+    if args.command == "cascade":
+        try:
+            report = ClassifierService().train_cascade(args.dataset, args.out)
+        except (ValueError, OSError) as error:
+            print(f"cascade failed: {error}", file=sys.stderr)
+            return 1
+        render_cascade_train_report(report)
         return 0
     return 0

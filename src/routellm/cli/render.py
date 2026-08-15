@@ -6,6 +6,12 @@ from io import TextIOBase
 from routellm.application.classifier_service import TrainReport
 from routellm.domain.route_decision import RouteDecision
 from routellm.evaluation.benchmark import BenchmarkResult
+from routellm.evaluation.cascade_report import (
+    CascadeEvaluationReport,
+    CascadeTrainReport,
+    format_cascade_evaluation_report,
+    format_cascade_train_report,
+)
 from routellm.evaluation.report import EvaluationReport
 
 
@@ -17,6 +23,8 @@ def format_decision(decision: RouteDecision) -> str:
         f"{'Route':<14}: {decision.route}",
         f"{'Confidence':<14}: {confidence}",
     ]
+    if decision.source:
+        lines.append(f"{'Source':<14}: {decision.source}")
     if decision.signals:
         lines.append("")
         lines.append("Signals:")
@@ -147,3 +155,20 @@ def format_benchmark_report(result: BenchmarkResult) -> str:
 def render_benchmark_report(result: BenchmarkResult, out: TextIOBase | None = None) -> None:
     """Print a benchmark run to the given stream (default: stdout)."""
     print(format_benchmark_report(result), file=out if out is not None else sys.stdout)
+
+
+def render_cascade_train_report(
+    report: CascadeTrainReport, out: TextIOBase | None = None
+) -> None:
+    """Print a cascade training summary to the given stream (default: stdout)."""
+    print(format_cascade_train_report(report), file=out if out is not None else sys.stdout)
+
+
+def render_cascade_evaluation_report(
+    report: CascadeEvaluationReport, out: TextIOBase | None = None
+) -> None:
+    """Print a cascade evaluation report to the given stream (default: stdout)."""
+    print(
+        format_cascade_evaluation_report(report),
+        file=out if out is not None else sys.stdout,
+    )

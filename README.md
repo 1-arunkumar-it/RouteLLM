@@ -4,7 +4,7 @@ RouteLLM is a Python, terminal-first learning project for building an explainabl
 
 ## Status
 
-In development. **Milestone 1: rule-based routing**, **Milestone 2: dataset + TF-IDF classifier**, and **Milestone 3: classifier benchmarking** are complete. The `routellm route` command classifies obvious prompts into a small category taxonomy using configurable keyword rules and selects a logical route. A hand-authored labeled dataset (245 prompts, 7 categories) supports a Logistic Regression + TF-IDF baseline classifier (`routellm train` and `routellm evaluate`) and a benchmark comparing it fairly against Linear SVM and Naive Bayes (`routellm benchmark`). **Milestone 4** (cascaded routing) is not started and requires explicit human approval. spaCy and Ollama integration are not implemented yet.
+In development. **Milestone 1: rule-based routing**, **Milestone 2: dataset + TF-IDF classifier**, **Milestone 3: classifier benchmarking**, and **Milestone 4: cascaded routing** are complete. The `routellm route` command classifies obvious prompts into a small category taxonomy using configurable keyword rules and selects a logical route. A hand-authored labeled dataset (245 prompts, 7 categories) supports a Logistic Regression + TF-IDF baseline classifier (`routellm train` and `routellm evaluate`) and a benchmark comparing it fairly against Linear SVM and Naive Bayes (`routellm benchmark`). The cascaded router (`routellm cascade`) combines validated rule evidence with a calibrated Linear SVM and a confidence threshold chosen from validation data, then `routellm route --model` routes through it with a truthful decision source. **Milestone 5** (complexity estimation) is not started and requires explicit human approval. spaCy and Ollama integration are not implemented yet.
 
 ## Planned technology stack
 
@@ -68,18 +68,35 @@ routellm evaluate
 
 `routellm route` remains rule-based in this milestone; the classifier is built, persisted, and measured, but the cascade that merges rules, classifier scores, and confidence thresholds is a later milestone. Reported confidence is an uncalibrated probability estimate, not a trusted probability.
 
+### Cascaded routing (Milestone 4)
+
+The `cascade` subcommand trains the cascaded router and `route --model` uses it:
+
+```bash
+routellm cascade
+routellm route --model models/cascade.joblib "Why does the sky appear blue?"
+routellm evaluate --model models/cascade.joblib
+```
+
+- `routellm cascade` splits the dataset deterministically, calibrates a Linear SVM (the benchmark-selected model) with `CalibratedClassifierCV`, measures rule precision per category on the validation split, selects a confidence threshold that maximizes cascade macro F1 on validation, and writes `models/cascade.joblib` plus a report. Options: `--dataset`, `--out`.
+- `routellm route --model` applies the cascade: rule signals win for categories validated as precise (default 0.90 precision on held-out data); otherwise a calibrated confidence at or above the validated threshold accepts the classifier's category; anything else falls back to `unknown`/`fallback`. Every decision reports its `source` (`rules`, `classifier`, or `fallback`) so the reason stays truthful. Without `--model`, `route` stays rule-only.
+- `routellm evaluate --model models/cascade.joblib` measures the full cascade on the held-out test split: standard metrics plus override rate and fallback rate.
+
+Confidence reported by the cascade is a calibrated probability; the threshold is justified by validation results, not assumed.
+
 ## Intended structure
 
 ```text
 src/routellm/
-├── cli/            Terminal interface: skeleton (M0), route subcommand (M1), train/evaluate (M2), benchmark (M3)
-├── application/    Orchestrates the routing use case (M1) and classifier training/evaluation/benchmarking (M2/M3)
+├── cli/            Terminal interface: skeleton (M0), route subcommand (M1), train/evaluate (M2), benchmark (M3), cascade (M4)
+├── application/    Orchestrates the routing use case (M1/M4) and classifier training/evaluation/benchmarking (M2/M3)
 ├── domain/         Stable concepts: categories, routes, signals, RouteDecision, ClassifierPrediction
 ├── preprocessing/  Prompt normalization and tokenization (M1)
 ├── signals/        Keyword/phrase rules and detection (M1)
-├── classification/ Dataset, TF-IDF features, the baseline classifier, and benchmark candidates (M2/M3)
-├── evaluation/     Classification metrics, reporting, and benchmarking (M2/M3)
-└── routing/        Deterministic routing policy (M1)
+├── classification/ Dataset, TF-IDF features, the baseline classifier, benchmark candidates, and the calibrated cascade model (M2/M3/M4)
+├── evaluation/     Classification metrics, reporting, benchmarking, rule precision, and threshold selection (M2/M3/M4)
+├── routing/        Deterministic routing policy (M1) and the cascade policy (M4)
+└── configuration/  Validated configuration, including CascadeConfig (M4)
 tests/              Test suite
 data/               Versioned datasets (data/datasets) and local processed artifacts (data/processed)
 models/             Generated local ML artifacts (not committed)

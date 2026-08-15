@@ -1,6 +1,8 @@
 # RouteLLM Roadmap
 
-Milestone 3 is complete. Milestone 4 requires explicit human approval before implementation. Later milestones describe sequencing, not permission for speculative work.
+Milestones 0–4 are complete. Milestone 5 requires explicit human approval
+before implementation. Later milestones describe sequencing, not permission
+for speculative work.
 
 ## Milestone 0 — Python project foundation
 
@@ -53,6 +55,13 @@ Milestone 3 is complete. Milestone 4 requires explicit human approval before imp
 ## Milestone 4 — Cascaded routing
 
 **Objective:** Combine rule evidence and statistical prediction safely.
+
+**Status:** Complete. Verified locally on `data/datasets/prompts.csv` (seed 42):
+threshold **0.35** (validation macro F1 **0.925**); rule overrides at precision
+≥ 0.90 for coding, creative_writing, math, summarization, translation; test
+accuracy **0.973** / macro F1 **0.976**; rule decisions **59.5%**, classifier
+**40.5%**, fallback **0.0%**, mean latency **0.20 ms**. Test suite: 138 passed;
+ruff clean.
 
 **Deliverables:** cascade policy, validated/calibrated confidence handling, configurable thresholds, unknown/fallback behavior, and explanation merging.
 
