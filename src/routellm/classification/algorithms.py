@@ -110,6 +110,30 @@ class CandidateClassifier:
         predicted = self.model.predict(matrix)
         margins = self.model.decision_function(matrix)
         predictions = []
+        if len(self.classes) == 2:
+            # Binary LinearSVC returns one signed margin per sample. sklearn's
+            # convention is that a positive margin supports classes_[1] and the
+            # negated margin supports classes_[0]. Convert to one raw score per
+            # class so the prediction contract is identical to the multiclass
+            # case. Raw margins must never be treated as probabilities.
+            for text, category, margin in zip(texts, predicted, margins):
+                margin = float(margin)
+                scores = tuple(
+                    sorted(
+                        ((self.classes[0], -margin), (self.classes[1], margin)),
+                        key=lambda item: item[1],
+                        reverse=True,
+                    )
+                )
+                predictions.append(
+                    ClassifierPrediction(
+                        text=text,
+                        category=category,
+                        confidence=None,
+                        scores=scores,
+                    )
+                )
+            return predictions
         for text, category, row in zip(texts, predicted, margins):
             scores = tuple(
                 sorted(

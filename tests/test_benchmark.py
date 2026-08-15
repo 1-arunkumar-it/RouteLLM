@@ -87,6 +87,50 @@ def test_selection_ties_break_by_latency_then_size():
     assert select_candidate(rows) == "fast_small"
 
 
+def _binary_dataset(per_class=20) -> Dataset:
+    texts = []
+    labels = []
+    for category in ("coding", "math"):
+        for index in range(per_class):
+            texts.append(f"sample {category} {index} prompt")
+            labels.append(category)
+    return Dataset(texts=tuple(texts), categories=tuple(labels))
+
+
+def _linear_svm_candidate():
+    return next(candidate for candidate in CANDIDATES if candidate.name == "linear_svm")
+
+
+def test_binary_linear_svm_predict_and_batch():
+    fitted = fit_candidate(_linear_svm_candidate(), _binary_dataset())
+    assert set(fitted.classes) == {"coding", "math"}
+
+    prediction = fitted.predict("sample coding 3 prompt")
+    assert prediction.category == "coding"
+    assert prediction.confidence is None
+    assert len(prediction.scores) == 2
+    assert sorted(name for name, _ in prediction.scores) == sorted(fitted.classes)
+    assert prediction.scores[0][0] == prediction.category
+    assert prediction.scores[0][1] >= prediction.scores[1][1]
+
+    batch = fitted.predict_batch(("sample coding 3 prompt", "sample math 7 prompt"))
+    assert [p.category for p in batch] == ["coding", "math"]
+    for item in batch:
+        assert len(item.scores) == len(fitted.classes)
+        assert sorted(name for name, _ in item.scores) == sorted(fitted.classes)
+        assert item.scores[0][0] == item.category
+        assert item.confidence is None
+        assert item.scores[0][1] >= item.scores[1][1]
+
+
+def test_binary_benchmark_runs_all_candidates(tmp_path):
+    dataset_path = tmp_path / "binary.csv"
+    write_dataset(_binary_dataset(), dataset_path)
+    result = run_benchmark(str(dataset_path), out_dir=str(tmp_path / "bench"))
+    assert [row.name for row in result.rows] == [candidate.name for candidate in CANDIDATES]
+    assert Path(result.report_path).exists()
+
+
 def test_linear_svm_exposes_no_probability_confidence():
     svm = next(candidate for candidate in CANDIDATES if candidate.name == "linear_svm")
     assert not svm.probability_available
