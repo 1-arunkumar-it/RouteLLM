@@ -5,6 +5,7 @@ import sys
 
 from routellm import __version__
 from routellm.application.classifier_service import ClassifierService, load_model
+from routellm.application.execution_service import ExecutionService
 from routellm.application.route_service import RouteService
 from routellm.classification.cascade_model import CascadeModel
 from routellm.cli.render import (
@@ -14,8 +15,11 @@ from routellm.cli.render import (
     render_complexity_evaluation,
     render_decision,
     render_evaluation_report,
+    render_execution_result,
+    render_provider_status,
     render_train_report,
 )
+from routellm.configuration.providers import load_provider_config
 from routellm.evaluation.cascade_report import CascadeEvaluationReport
 from routellm.evaluation.complexity import evaluate_complexity
 
@@ -47,6 +51,35 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="path to a cascade model for confidence-based routing "
         "(default: rule-based routing only)",
+    )
+    run_parser = subparsers.add_parser(
+        "run",
+        help="route a prompt and execute the selected model through its provider",
+    )
+    run_parser.add_argument(
+        "prompt",
+        nargs="+",
+        help="natural-language prompt; words are joined with spaces",
+    )
+    run_parser.add_argument(
+        "--model",
+        default=None,
+        help="path to a cascade model for confidence-based routing "
+        "(default: rule-based routing only)",
+    )
+    run_parser.add_argument(
+        "--config",
+        default=None,
+        help="path to a provider configuration TOML file (default: built-in defaults)",
+    )
+    providers_parser = subparsers.add_parser(
+        "providers",
+        help="show configured routes, their providers/models, and availability",
+    )
+    providers_parser.add_argument(
+        "--config",
+        default=None,
+        help="path to a provider configuration TOML file (default: built-in defaults)",
     )
     train_parser = subparsers.add_parser(
         "train",
@@ -154,6 +187,40 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
         decision = RouteService(model=model).route(prompt)
         render_decision(decision)
+        return 0
+    if args.command == "run":
+        prompt = " ".join(args.prompt)
+        try:
+            config = load_provider_config(args.config)
+        except (ValueError, OSError) as error:
+            print(f"run failed: {error}", file=sys.stderr)
+            return 1
+        model = None
+        if args.model:
+            try:
+                model = load_model(args.model)
+            except (ValueError, OSError) as error:
+                print(f"run failed: {error}", file=sys.stderr)
+                return 1
+            if not isinstance(model, CascadeModel):
+                print(
+                    f"run failed: {args.model} is not a cascade model; "
+                    "train one with 'routellm cascade'.",
+                    file=sys.stderr,
+                )
+                return 1
+        decision = RouteService(model=model).route(prompt)
+        response = ExecutionService(config=config).execute(decision)
+        render_execution_result(decision, response)
+        return 0
+    if args.command == "providers":
+        try:
+            config = load_provider_config(args.config)
+            rows = ExecutionService(config=config).status_table()
+        except (ValueError, OSError) as error:
+            print(f"providers failed: {error}", file=sys.stderr)
+            return 1
+        render_provider_status(rows)
         return 0
     if args.command == "train":
         try:

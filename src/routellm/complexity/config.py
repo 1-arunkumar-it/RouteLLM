@@ -10,6 +10,8 @@ rather than tuned on it, so the reported quality stays honest.
 from dataclasses import dataclass
 from types import MappingProxyType
 
+from routellm.domain.routes import COMPLEXITY_LEVELS
+
 REASONING_INDICATORS = (
     "because",
     "therefore",
@@ -309,10 +311,11 @@ class ComplexityConfig:
         caps = dict(
             self.feature_caps if self.feature_caps is not None else DEFAULT_FEATURE_CAPS
         )
-        if len(self.levels) != 3:
-            raise ValueError(f"levels must have exactly 3 entries, got {self.levels!r}.")
-        if len(set(self.levels)) != len(self.levels):
-            raise ValueError(f"levels must be distinct, got {self.levels!r}.")
+        if self.levels != COMPLEXITY_LEVELS:
+            raise ValueError(
+                f"levels must be the fixed routing-policy scale {COMPLEXITY_LEVELS!r}, "
+                f"got {self.levels!r}."
+            )
         if not 0 < self.low_threshold < self.high_threshold < 1:
             raise ValueError(
                 "thresholds must satisfy 0 < low_threshold < high_threshold < 1, got "

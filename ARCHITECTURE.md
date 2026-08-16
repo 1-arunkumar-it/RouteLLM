@@ -10,7 +10,7 @@ RouteLLM is a local, explainable routing layer. The baseline categorizes a promp
 CLI -> Application -> Preprocessing / Signals / Classification -> Routing
                   \-> Domain
 
-Providers (future) -> Domain + Configuration
+Providers -> Domain + Configuration
 ```
 
 The operational layers are CLI, Application, Domain, Preprocessing/Signals/Classification, Routing, and Providers. Dependencies point inward toward the domain: outer layers may depend on inner layers, while the domain must not depend on any outer layer or third-party ML/provider library.
@@ -25,7 +25,7 @@ The operational layers are CLI, Application, Domain, Preprocessing/Signals/Class
 | Classification | Build features, train/predict with interchangeable traditional ML models, expose calibrated confidence metadata, and persist a `CascadeModel`. | Domain, configuration, approved ML/NLP libraries. |
 | Complexity | Estimate an ordinal prompt-complexity level from length and indicator signals; load the labeled evaluation set. | Domain, configuration, preprocessing, standard library. |
 | Routing | Apply the cascade policy to signal and classifier results and complexity-aware route selection: validated rules, then calibrated confidence against a validated threshold, then fallback; re-route `general_qa`/`summarization` to `reasoning` at high complexity. | Domain and configuration; never providers. |
-| Providers | Map a logical route to executable local/remote services. Deferred until Milestone 6. | Domain, configuration, provider-specific clients. |
+| Providers | Map a logical route to executable local/remote services. Milestone 6 implements a config-driven `ProviderRegistry` and an Ollama adapter (standard-library `urllib` only), plus single-hop unavailability fallback. | Domain, configuration, provider-specific clients. |
 
 The CLI must never directly perform preprocessing, classification, routing, or provider calls. It calls the application layer, which orchestrates the use case and returns a `RouteDecision` for rendering.
 
@@ -87,15 +87,16 @@ Training calibrates on the train split only; rule precision and threshold select
 
 Complexity changes routing only through `COMPLEXITY_REROUTES`: at `high` complexity, `general_qa` and `summarization` route to the `reasoning` label. It never changes the category decision, never re-routes `unknown` (always `fallback`), and leaves every other category on its base route. `RouteService` validates the reroute matrix at construction. Quality is measured on the hand-labeled `data/datasets/complexity.csv` evaluation set via `routellm complexity`, which routes each prompt through `RouteService` and reports how often the estimate actually changed a route under the evaluated configuration (rule-only or cascade).
 
-Future execution flow is separate:
+Execution flow is separate from routing (Milestone 6):
 
 ```text
 RouteDecision
   -> provider registry
   -> selected provider/model
+  -> Ollama adapter
 ```
 
-Before providers exist, a logical route is a label, not an instruction to execute a model.
+Routing always selects a logical label such as `coding-local`. Execution is an optional downstream step: `ExecutionService` resolves that label through `ProviderRegistry` against a validated `ProviderConfig`, calls the Ollama adapter for the configured model, and reports a `ProviderResponse` (`ok`, `not_configured`, `unavailable`, or `error`). When the primary provider is unavailable, a configured single-hop fallback route is attempted before reporting `unavailable` (SPEC section 38). `RouteService` never touches providers, so the routing engine remains fully usable with no Ollama installation; a logical route is a label, not an instruction to execute a model, until execution is explicitly requested.
 
 ## Architectural constraints
 

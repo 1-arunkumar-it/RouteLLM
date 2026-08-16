@@ -1,6 +1,6 @@
 # RouteLLM Roadmap
 
-Milestones 0–5 are complete. Later milestones describe sequencing, not
+Milestones 0–6 are complete. Later milestones describe sequencing, not
 permission for speculative work.
 
 ## Milestone 0 — Python project foundation
@@ -95,6 +95,16 @@ fixed and covered by tests. Test suite: 193 passed; ruff clean.
 ## Milestone 6 — Ollama integration
 
 **Objective:** Resolve logical routes to configured local Ollama models.
+
+**Status:** Complete. `routellm providers` lists every logical route with its
+configured provider/model and live availability, and `routellm run` routes a
+prompt and executes the selected model through the provider. Verified live on
+this machine (Ollama 0.32.13, `qwen2.5-coder:3b`): a coding prompt executed
+through `coding-local` (status `ok`); a configured model missing from the
+server fell back to `general-local`; `calculator` reported `not_configured`.
+The adapter uses only the standard library (`urllib`); the normal test suite
+runs fully offline with an injected HTTP seam and requires no Ollama
+installation. Test suite: 257 passed; ruff clean.
 
 **Deliverables:** provider registry, validated model configuration, Ollama adapter, availability/fallback behavior, and mocked provider tests.
 

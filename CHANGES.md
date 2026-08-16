@@ -1,11 +1,11 @@
 # Outstanding changes
 
-## Milestone 5 — Complexity configuration
+## Milestone 6 — Ollama integration
 
-- [ ] Align `ComplexityConfig.levels` with the fixed routing-policy levels.
-  The configuration currently accepts any three distinct names, but
-  `COMPLEXITY_REROUTES` only defines `low`/`medium`/`high`. For example, a
-  high-complexity general question under `("low", "medium", "critical")`
-  receives level `critical` but stays on `general-local`. Either restrict
-  `levels` to the documented fixed scale or make reroute policy configuration
-  use the supplied levels; add a regression test.
+- Complete: provider registry, validated provider configuration (TOML
+  override), Ollama adapter (standard-library `urllib`), availability/fallback
+  behavior, `routellm run` and `routellm providers`, and fully mocked provider
+  tests. The routing engine remains usable with no Ollama installation.
+- Resolved the Milestone 5 review item: `ComplexityConfig.levels` is now
+  restricted to the fixed routing-policy scale `("low", "medium", "high")`,
+  with a regression test covering non-fixed names.

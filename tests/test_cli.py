@@ -8,8 +8,10 @@ import sys
 import pytest
 
 from routellm import __version__
+from routellm.application.execution_service import ProviderStatusRow
 from routellm.classification.dataset import Dataset, write_dataset
 from routellm.cli import main as cli_main
+from routellm.domain.provider import ProviderResponse
 
 
 def _run_module(*args: str) -> subprocess.CompletedProcess[str]:
@@ -293,3 +295,123 @@ def test_complexity_subcommand_requires_cascade_model(capsys, tmp_path):
     assert exit_code == 1
     assert "complexity failed:" in captured.err
     assert "not a cascade model" in captured.err
+
+
+def _ok_response(route="coding-local", model="qwen2.5-coder:3b", text="def f(): pass"):
+    return ProviderResponse(
+        requested_route=route,
+        route=route,
+        provider="ollama",
+        model=model,
+        status="ok",
+        text=text,
+        error="",
+        latency_ms=12.5,
+    )
+
+
+def _unavailable_response(route="coding-local"):
+    return ProviderResponse(
+        requested_route=route,
+        route=route,
+        provider="ollama",
+        model="qwen2.5-coder:3b",
+        status="unavailable",
+        text="",
+        error="Provider for route 'coding-local' is unavailable and no fallback "
+        "route is configured.",
+        latency_ms=None,
+    )
+
+
+def _stub_execution_service(response, rows=()):
+    class StubExecutionService:
+        def __init__(self, config=None):
+            self.config = config
+
+        def execute(self, decision):
+            return response
+
+        def status_table(self):
+            return rows
+
+    return StubExecutionService
+
+
+def test_run_subcommand_prints_model_output(monkeypatch, capsys):
+    monkeypatch.setattr(cli_main, "ExecutionService", _stub_execution_service(_ok_response()))
+    exit_code = cli_main.main(["run", "write", "a", "python", "script"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Category      : coding" in output
+    assert "Model output:" in output
+    assert "def f(): pass" in output
+    assert "Status        : ok" in output
+    assert "Provider      : ollama" in output
+    assert "Model         : qwen2.5-coder:3b" in output
+
+
+def test_run_subcommand_reports_unavailable(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli_main, "ExecutionService", _stub_execution_service(_unavailable_response())
+    )
+    exit_code = cli_main.main(["run", "write", "a", "python", "script"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Status        : unavailable" in output
+    assert "Detail        : Provider for route 'coding-local' is unavailable" in output
+
+
+def test_run_with_non_cascade_model_returns_one(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(cli_main, "ExecutionService", _stub_execution_service(_ok_response()))
+    dataset_path = _write_keyword_dataset(tmp_path / "prompts.csv")
+    model_path = tmp_path / "classifier.joblib"
+    assert cli_main.main(
+        ["train", "--dataset", str(dataset_path), "--out", str(model_path)]
+    ) == 0
+    capsys.readouterr()
+    exit_code = cli_main.main(
+        ["run", "--model", str(model_path), "write", "a", "python", "script"]
+    )
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "run failed:" in captured.err
+    assert "not a cascade model" in captured.err
+
+
+def test_run_with_missing_config_returns_one(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(cli_main, "ExecutionService", _stub_execution_service(_ok_response()))
+    exit_code = cli_main.main(
+        ["run", "--config", str(tmp_path / "missing.toml"), "write", "a", "script"]
+    )
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "run failed:" in captured.err
+
+
+def test_providers_subcommand_prints_table(monkeypatch, capsys):
+    rows = (
+        ProviderStatusRow(
+            route="coding-local", provider="ollama", model="qwen2.5-coder:3b", available=True
+        ),
+        ProviderStatusRow(route="calculator", provider=None, model=None, available=None),
+    )
+    monkeypatch.setattr(cli_main, "ExecutionService", _stub_execution_service(_ok_response(), rows))
+    exit_code = cli_main.main(["providers"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Provider configuration:" in output
+    assert "coding-local" in output
+    assert "yes" in output
+    assert "calculator" in output
+    assert "n/a" in output
+
+
+def test_providers_with_invalid_config_returns_one(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(cli_main, "ExecutionService", _stub_execution_service(_ok_response()))
+    bad = tmp_path / "bad.toml"
+    bad.write_text("this is = not [valid toml", encoding="utf-8")
+    exit_code = cli_main.main(["providers", "--config", str(bad)])
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "providers failed:" in captured.err

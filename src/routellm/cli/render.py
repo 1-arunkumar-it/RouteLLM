@@ -4,6 +4,8 @@ import sys
 from io import TextIOBase
 
 from routellm.application.classifier_service import TrainReport
+from routellm.application.execution_service import ProviderStatusRow
+from routellm.domain.provider import ProviderResponse
 from routellm.domain.route_decision import RouteDecision
 from routellm.evaluation.benchmark import BenchmarkResult
 from routellm.evaluation.cascade_report import (
@@ -47,6 +49,81 @@ def format_decision(decision: RouteDecision) -> str:
 def render_decision(decision: RouteDecision, out: TextIOBase | None = None) -> None:
     """Print a decision to the given stream (default: stdout)."""
     print(format_decision(decision), file=out if out is not None else sys.stdout)
+
+
+def format_execution_result(decision: RouteDecision, response: ProviderResponse) -> str:
+    """Render a routing decision plus the outcome of executing its model.
+
+    The status and detail lines come directly from the ``ProviderResponse`` and
+    are never invented (SPEC section 38).
+    """
+    lines = format_decision(decision).splitlines()
+    lines.append("")
+    lines.append("Model output:")
+    lines.append(response.text if response.status == "ok" else "(no output)")
+    lines.append("")
+    lines.append(f"{'Status':<14}: {response.status}")
+    if response.provider:
+        lines.append(f"{'Provider':<14}: {response.provider}")
+        lines.append(f"{'Model':<14}: {response.model}")
+    if response.requested_route != response.route:
+        lines.append(f"{'Executed via':<14}: {response.route}")
+    if response.latency_ms is not None:
+        lines.append(f"{'Latency':<14}: {response.latency_ms:.1f} ms")
+    if response.error:
+        lines.append(f"{'Detail':<14}: {response.error}")
+    return "\n".join(lines)
+
+
+def render_execution_result(
+    decision: RouteDecision, response: ProviderResponse, out: TextIOBase | None = None
+) -> None:
+    """Print a routing decision and its execution outcome (default: stdout)."""
+    print(
+        format_execution_result(decision, response),
+        file=out if out is not None else sys.stdout,
+    )
+
+
+def format_provider_status(rows: tuple[ProviderStatusRow, ...]) -> str:
+    """Render the provider status table as plain text."""
+    header = ("route", "provider", "model", "available")
+    entries: list[tuple[str, str, str, str]] = []
+    for row in rows:
+        available = (
+            "n/a"
+            if row.available is None
+            else ("yes" if row.available else "no")
+        )
+        entries.append(
+            (
+                row.route,
+                row.provider if row.provider is not None else "n/a",
+                row.model if row.model is not None else "n/a",
+                available,
+            )
+        )
+    widths = [
+        max(len(header[index]), max((len(entry[index]) for entry in entries), default=0))
+        for index in range(len(header))
+    ]
+    lines = ["Provider configuration:"]
+    lines.append(
+        "  "
+        + "  ".join(f"{value:<{width}}" for value, width in zip(header, widths))
+    )
+    for entry in entries:
+        lines.append(
+            "  " + "  ".join(f"{value:<{width}}" for value, width in zip(entry, widths))
+        )
+    return "\n".join(lines)
+
+
+def render_provider_status(
+    rows: tuple[ProviderStatusRow, ...], out: TextIOBase | None = None
+) -> None:
+    """Print the provider status table to the given stream (default: stdout)."""
+    print(format_provider_status(rows), file=out if out is not None else sys.stdout)
 
 
 def format_train_report(report: TrainReport) -> str:

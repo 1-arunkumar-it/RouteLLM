@@ -40,7 +40,15 @@ def test_config_passed_mappings_are_copied_not_shared():
     assert config.feature_weights["length"] == 0.55
 
 
-@pytest.mark.parametrize("levels", [("low", "high"), ("low", "low", "high")])
+@pytest.mark.parametrize(
+    "levels",
+    [
+        ("low", "high"),
+        ("low", "low", "high"),
+        ("low", "medium", "critical"),
+        ("simple", "medium", "hard"),
+    ],
+)
 def test_config_rejects_invalid_levels(levels):
     with pytest.raises(ValueError, match="levels"):
         ComplexityConfig(levels=levels)
