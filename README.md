@@ -4,7 +4,7 @@ RouteLLM is a Python, terminal-first learning project for building an explainabl
 
 ## Status
 
-In development. **Milestone 1: rule-based routing**, **Milestone 2: dataset + TF-IDF classifier**, **Milestone 3: classifier benchmarking**, and **Milestone 4: cascaded routing** are complete. The `routellm route` command classifies obvious prompts into a small category taxonomy using configurable keyword rules and selects a logical route. A hand-authored labeled dataset (245 prompts, 7 categories) supports a Logistic Regression + TF-IDF baseline classifier (`routellm train` and `routellm evaluate`) and a benchmark comparing it fairly against Linear SVM and Naive Bayes (`routellm benchmark`). The cascaded router (`routellm cascade`) combines validated rule evidence with a calibrated Linear SVM and a confidence threshold chosen from validation data, then `routellm route --model` routes through it with a truthful decision source. **Milestone 5** (complexity estimation) is not started and requires explicit human approval. spaCy and Ollama integration are not implemented yet.
+In development. **Milestone 1: rule-based routing**, **Milestone 2: dataset + TF-IDF classifier**, **Milestone 3: classifier benchmarking**, **Milestone 4: cascaded routing**, and **Milestone 5: complexity estimation** are complete. The `routellm route` command classifies obvious prompts into a small category taxonomy using configurable keyword rules and selects a logical route. A hand-authored labeled dataset (245 prompts, 7 categories) supports a Logistic Regression + TF-IDF baseline classifier (`routellm train` and `routellm evaluate`) and a benchmark comparing it fairly against Linear SVM and Naive Bayes (`routellm benchmark`). The cascaded router (`routellm cascade`) combines validated rule evidence with a calibrated Linear SVM and a confidence threshold chosen from validation data, then `routellm route --model` routes through it with a truthful decision source. The complexity estimator (`routellm complexity`) blends prompt length and matched indicator signals into a `low`/`medium`/`high` level and re-routes high-complexity `general_qa`/`summarization` prompts to a `reasoning` route. spaCy and Ollama integration are not implemented yet.
 
 ## Planned technology stack
 
@@ -84,18 +84,35 @@ routellm evaluate --model models/cascade.joblib
 
 Confidence reported by the cascade is a calibrated probability; the threshold is justified by validation results, not assumed.
 
+### Complexity estimation (Milestone 5)
+
+The `complexity` subcommand measures the heuristic complexity estimator on a hand-labeled set, and `route` decisions now report a complexity level:
+
+```bash
+routellm complexity
+routellm complexity --model models/cascade.joblib
+routellm route "Why does the sky appear blue and how do we measure that evidence"
+```
+
+- `routellm complexity` loads `data/datasets/complexity.csv` (90 labeled prompts, 30 per level), routes each prompt through the same path as `routellm route`, and reports accuracy, macro precision/recall/F1, a confusion matrix, mean latency, and how many route decisions actually changed. Options: `--dataset`, `--model` (measure route-policy impact under cascade routing; default is rule-only routing, labeled in the report).
+- Complexity is an ordinal `low`/`medium`/`high` level from two explainable heuristic signals: prompt length (capped) and the number of distinct matched indicators across reasoning, operation, technical, code, and clause vocabularies (capped). The blend weights, caps, and thresholds are validated, deeply immutable design constants in `ComplexityConfig`.
+- The level only affects route selection for `general_qa` and `summarization` at high complexity, which re-route to a `reasoning` route (SPEC section 41). The category decision, `unknown`/`fallback`, and all other categories are never changed by complexity.
+
+Measured on the labeled set under rule-only routing: accuracy 0.867, macro F1 0.862, mean latency 0.25 ms; 11 of 90 prompts re-routed to `reasoning` (6 under cascade routing). No LLM or external model is involved.
+
 ## Intended structure
 
 ```text
 src/routellm/
-├── cli/            Terminal interface: skeleton (M0), route subcommand (M1), train/evaluate (M2), benchmark (M3), cascade (M4)
-├── application/    Orchestrates the routing use case (M1/M4) and classifier training/evaluation/benchmarking (M2/M3)
-├── domain/         Stable concepts: categories, routes, signals, RouteDecision, ClassifierPrediction
+├── cli/            Terminal interface: skeleton (M0), route subcommand (M1), train/evaluate (M2), benchmark (M3), cascade (M4), complexity (M5)
+├── application/    Orchestrates the routing use case (M1/M4/M5) and classifier training/evaluation/benchmarking (M2/M3)
+├── domain/         Stable concepts: categories, routes, signals, RouteDecision, ClassifierPrediction, ComplexityEstimate (M5)
 ├── preprocessing/  Prompt normalization and tokenization (M1)
 ├── signals/        Keyword/phrase rules and detection (M1)
 ├── classification/ Dataset, TF-IDF features, the baseline classifier, benchmark candidates, and the calibrated cascade model (M2/M3/M4)
-├── evaluation/     Classification metrics, reporting, benchmarking, rule precision, and threshold selection (M2/M3/M4)
-├── routing/        Deterministic routing policy (M1) and the cascade policy (M4)
+├── complexity/     Heuristic complexity config, estimator, and labeled-set loading (M5)
+├── evaluation/     Classification metrics, reporting, benchmarking, rule precision, threshold selection, and complexity evaluation (M2/M3/M4/M5)
+├── routing/        Deterministic routing policy (M1) and the cascade policy (M4), complexity-aware route selection (M5)
 └── configuration/  Validated configuration, including CascadeConfig (M4)
 tests/              Test suite
 data/               Versioned datasets (data/datasets) and local processed artifacts (data/processed)

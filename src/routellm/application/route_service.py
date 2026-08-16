@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 
 from routellm.classification.cascade_model import CascadeModel
+from routellm.complexity.config import ComplexityConfig
+from routellm.complexity.estimator import estimate
 from routellm.configuration.cascade import CascadeConfig
 from routellm.domain.route_decision import RouteDecision
 from routellm.domain.signal import Signal
@@ -27,6 +29,7 @@ class RouteService:
     signal_rules: dict[str, tuple[tuple[str, ...], ...]] | None = None
     model: CascadeModel | None = None
     cascade_config: CascadeConfig | None = None
+    complexity_config: ComplexityConfig | None = None
 
     def __post_init__(self) -> None:
         rules = self.signal_rules if self.signal_rules is not None else SIGNAL_RULES
@@ -37,6 +40,11 @@ class RouteService:
             )
         if self.cascade_config is not None and self.model is None:
             raise ValueError("cascade_config requires a cascade model.")
+        if self.complexity_config is not None and not isinstance(
+            self.complexity_config, ComplexityConfig
+        ):
+            raise ValueError("complexity_config must be a ComplexityConfig instance.")
+        policy.validate_complexity_routes()
 
     def _effective_threshold(self) -> float:
         if self.cascade_config is not None and self.cascade_config.threshold is not None:
@@ -48,9 +56,10 @@ class RouteService:
         rules = self.signal_rules if self.signal_rules is not None else SIGNAL_RULES
         tokens = preprocessor.tokenize(prompt)
         signals = engine.detect_signals(tokens, rules)
+        complexity = estimate(prompt, self.complexity_config)
         if self.model is None:
             category = policy.decide_category(signals)
-            route = policy.route_for(category)
+            route = policy.route_for(category, complexity.level)
             return RouteDecision(
                 prompt=prompt,
                 category=category,
@@ -59,6 +68,7 @@ class RouteService:
                 confidence=None,
                 source="rules",
                 reason=build_reason(category, signals),
+                complexity=complexity,
             )
         prediction = self.model.predict(prompt)
         threshold = self._effective_threshold()
@@ -71,11 +81,12 @@ class RouteService:
         return RouteDecision(
             prompt=prompt,
             category=outcome.category,
-            route=policy.route_for(outcome.category),
+            route=policy.route_for(outcome.category, complexity.level),
             signals=signals,
             confidence=outcome.confidence,
             source=outcome.source,
             reason=build_cascade_reason(outcome, len(signals), threshold),
+            complexity=complexity,
         )
 
 

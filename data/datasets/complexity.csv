@@ -1,0 +1,91 @@
+text,complexity
+"What is 2 plus 2",low
+"What is the capital of Japan",low
+"Translate hello into French",low
+"Who won the 2018 World Cup",low
+"Add 12 and 30",low
+"What color is the sky",low
+"Say good morning in Spanish",low
+"What is the date today",low
+"Multiply 6 by 7",low
+"What does API stand for",low
+"What is the freezing point of water",low
+"How many legs does a spider have",low
+"What is 100 divided by 4",low
+"What is a synonym for happy",low
+"Which planet is closest to the sun",low
+"What is the currency of the UK",low
+"What is 9 times 9",low
+"How many days are in a leap year",low
+"What is the opposite of hot",low
+"Name the largest ocean",low
+"What is a noun",low
+"What day comes after Friday",low
+"What is the speed of sound",low
+"Where is the Eiffel Tower",low
+"What is the abbreviation for kilogram",low
+"How old is the oldest person alive",low
+"What is the square of 6",low
+"Translate good night into Tamil",low
+"What year was the telephone invented",low
+"What is the plural of child",low
+"Write a Python function that sorts a list of dictionaries by a key",medium
+"Explain the steps to set up a Kubernetes cluster for a small team",medium
+"Summarize the main arguments in this three page essay",medium
+"Compare the advantages of SQL and NoSQL databases for analytics",medium
+"Debug a race condition between two threads that share a counter",medium
+"Design a REST API with authentication and rate limiting",medium
+"Describe how to migrate data from a legacy system to a new database",medium
+"What are the trade offs between caching and recomputation",medium
+"Write a shell script that renames all files in a directory by date",medium
+"Explain how load balancers decide which server should handle a request",medium
+"Summarize this report about renewable energy in two paragraphs",medium
+"Build a small web app with a login page and a dashboard",medium
+"Compare the climate policies of three major economies",medium
+"Explain how an algorithm learns to recognize handwritten digits",medium
+"Write a query that finds all orders placed in the last month",medium
+"Outline the steps to deploy a machine learning model to production",medium
+"Explain the difference between correlation and causation with examples",medium
+"Design a backup strategy for a company database",medium
+"Summarize the key findings of this clinical trial abstract",medium
+"Fix the memory leak in a long running service",medium
+"Explain how DNS resolution works from browser to server",medium
+"Write instructions for setting up two factor authentication",medium
+"Compare two sorting algorithms and their time complexity",medium
+"Describe the process of creating a data pipeline for daily reports",medium
+"Explain the causes of inflation and its effects on savings",medium
+"Build a form that validates email addresses and phone numbers",medium
+"Summarize the main events of the industrial revolution",medium
+"Explain how a hash table resolves collisions",medium
+"Write a plan for migrating a legacy app to the cloud",medium
+"Explain the difference between a VPN and a proxy server",medium
+"Prove why the sum of an infinite geometric series converges only when the ratio is below one",high
+"Evaluate the ethical implications of facial recognition in public spaces and propose safeguards",high
+"Analyze the failure modes of a distributed database under network partitions and recommend mitigations",high
+"Explain why quantum computing threatens current encryption and what alternatives might replace it",high
+"Derive the relationship between energy and frequency and discuss its consequences for physics",high
+"Design a recommendation system that balances accuracy, diversity, and user privacy, justifying each choice",high
+"Investigate the causal factors behind rising housing costs and evaluate which policy interventions are evidence based",high
+"Prove that the square root of two is irrational and explain why the argument generalizes",high
+"Analyze the trade offs between centralization and decentralization in governance with historical examples",high
+"Design an experiment to measure the effect of sleep on memory and identify potential confounds",high
+"Evaluate whether current machine learning models can reason about causality, citing mechanisms and limits",high
+"Explain how a blockchain achieves consensus under adversarial conditions and where it can fail",high
+"Develop a framework for assessing the long term risk of a new technology and justify the assessment method",high
+"Prove the intermediate value theorem and discuss its implications for root finding algorithms",high
+"Analyze the economic consequences of automation on labor markets and evaluate proposed interventions",high
+"Design a fault tolerant system that handles partial failures gracefully, comparing replication strategies",high
+"Explain how gradient descent converges and analyze the conditions under which it can diverge",high
+"Construct an argument about whether consciousness can be replicated in machines, assessing competing theories",high
+"Evaluate the scientific evidence for and against human induced climate change and its projected effects",high
+"Prove that the number of primes is infinite and explain the structure of the argument",high
+"Design a protocol for securely sharing medical records that balances access and privacy",high
+"Analyze the trade offs of real time vs batch data processing and recommend when each is appropriate",high
+"Explain the mechanisms by which antibiotics resistance spreads and propose a strategy to slow it",high
+"Evaluate the feasibility of carbon capture technology and justify your conclusions with evidence",high
+"Prove the Pythagorean theorem in two different ways and compare the approaches",high
+"Analyze the systemic risks in a financial market and design safeguards against contagion",high
+"Explain how reinforcement learning balances exploration and exploitation and analyze its limits",high
+"Design a study that separates the effect of diet from the effect of exercise on health outcomes",high
+"Evaluate the philosophical argument for free will against determinism and defend a position",high
+"Analyze the failure conditions of nuclear reactors and evaluate the adequacy of current safety systems",high

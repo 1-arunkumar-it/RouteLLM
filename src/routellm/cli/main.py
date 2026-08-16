@@ -11,11 +11,13 @@ from routellm.cli.render import (
     render_benchmark_report,
     render_cascade_evaluation_report,
     render_cascade_train_report,
+    render_complexity_evaluation,
     render_decision,
     render_evaluation_report,
     render_train_report,
 )
 from routellm.evaluation.cascade_report import CascadeEvaluationReport
+from routellm.evaluation.complexity import evaluate_complexity
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -108,6 +110,22 @@ def build_parser() -> argparse.ArgumentParser:
         default="models/cascade.joblib",
         help="path to write the cascade model (default: models/cascade.joblib)",
     )
+    complexity_parser = subparsers.add_parser(
+        "complexity",
+        help="evaluate the heuristic complexity estimator on a labeled set",
+    )
+    complexity_parser.add_argument(
+        "--dataset",
+        default="data/datasets/complexity.csv",
+        help="labeled CSV dataset with text,complexity "
+        "(default: data/datasets/complexity.csv)",
+    )
+    complexity_parser.add_argument(
+        "--model",
+        default=None,
+        help="path to a cascade model for route-policy impact under cascade "
+        "routing (default: rule-only routing)",
+    )
     return parser
 
 
@@ -175,5 +193,27 @@ def main(argv: list[str] | None = None) -> int:
             print(f"cascade failed: {error}", file=sys.stderr)
             return 1
         render_cascade_train_report(report)
+        return 0
+    if args.command == "complexity":
+        model = None
+        if args.model:
+            try:
+                model = load_model(args.model)
+            except (ValueError, OSError) as error:
+                print(f"complexity failed: {error}", file=sys.stderr)
+                return 1
+            if not isinstance(model, CascadeModel):
+                print(
+                    f"complexity failed: {args.model} is not a cascade model; "
+                    "train one with 'routellm cascade'.",
+                    file=sys.stderr,
+                )
+                return 1
+        try:
+            report = evaluate_complexity(args.dataset, model=model)
+        except (ValueError, OSError) as error:
+            print(f"complexity failed: {error}", file=sys.stderr)
+            return 1
+        render_complexity_evaluation(report)
         return 0
     return 0

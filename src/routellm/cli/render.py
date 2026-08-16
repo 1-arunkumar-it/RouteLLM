@@ -12,6 +12,10 @@ from routellm.evaluation.cascade_report import (
     format_cascade_evaluation_report,
     format_cascade_train_report,
 )
+from routellm.evaluation.complexity import (
+    ComplexityEvaluationReport,
+    format_complexity_evaluation_report,
+)
 from routellm.evaluation.report import EvaluationReport
 
 
@@ -25,10 +29,16 @@ def format_decision(decision: RouteDecision) -> str:
     ]
     if decision.source:
         lines.append(f"{'Source':<14}: {decision.source}")
+    if decision.complexity is not None:
+        lines.append(f"{'Complexity':<14}: {decision.complexity.level}")
     if decision.signals:
         lines.append("")
         lines.append("Signals:")
         lines.extend(f"  {signal.phrase}" for signal in decision.signals)
+    if decision.complexity is not None and decision.complexity.signals:
+        lines.append("")
+        lines.append("Complexity signals:")
+        lines.extend(f"  {signal}" for signal in decision.complexity.signals)
     lines.append("")
     lines.append(f"Reason: {decision.reason}")
     return "\n".join(lines)
@@ -170,5 +180,15 @@ def render_cascade_evaluation_report(
     """Print a cascade evaluation report to the given stream (default: stdout)."""
     print(
         format_cascade_evaluation_report(report),
+        file=out if out is not None else sys.stdout,
+    )
+
+
+def render_complexity_evaluation(
+    report: ComplexityEvaluationReport, out: TextIOBase | None = None
+) -> None:
+    """Print a complexity evaluation to the given stream (default: stdout)."""
+    print(
+        format_complexity_evaluation_report(report),
         file=out if out is not None else sys.stdout,
     )

@@ -197,3 +197,99 @@ def test_benchmark_invalid_dataset_returns_one(capsys, tmp_path):
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "benchmark failed:" in captured.err
+
+
+def _write_keyword_dataset(path):
+    phrases = {
+        "coding": (
+            "write a python script",
+            "fix the java bug",
+            "build a rest api",
+            "debug the docker container",
+            "refactor this typescript class",
+            "write a golang function",
+            "query the sql database",
+            "create a kubernetes deployment",
+            "write a rust compiler",
+            "implement binary search",
+        ),
+        "math": (
+            "calculate the percentage",
+            "what is the sum",
+            "solve this equation",
+            "compute the derivative",
+            "divide the numbers",
+            "multiply two values",
+            "find the square root",
+            "solve the algebra problem",
+            "calculate the integral",
+            "subtract the numbers",
+        ),
+        "translation": (
+            "translate into tamil",
+            "translate into hindi",
+            "translate into telugu",
+            "translate into spanish",
+            "translate into german",
+            "translate into japanese",
+            "translate into chinese",
+            "translate into korean",
+            "translate into french",
+            "translate this paragraph",
+        ),
+    }
+    texts = []
+    categories = []
+    for category, category_phrases in phrases.items():
+        for phrase in category_phrases:
+            for index in range(2):
+                texts.append(f"{phrase} {index}")
+                categories.append(category)
+    write_dataset(Dataset(texts=tuple(texts), categories=tuple(categories)), path)
+    return path
+
+
+def _write_complexity_dataset(path):
+    rows = [
+        ("What is 2 plus 2", "low"),
+        ("What is the capital of Japan", "low"),
+        ("Write a Python function that sorts a list of dictionaries by a key", "medium"),
+    ]
+    path.write_text(
+        "text,complexity\n" + "".join(f'"{text}","{level}"\n' for text, level in rows),
+        encoding="utf-8",
+    )
+
+
+def test_complexity_subcommand_with_cascade_model(capsys, tmp_path):
+    dataset_path = _write_keyword_dataset(tmp_path / "prompts.csv")
+    complexity_path = tmp_path / "complexity.csv"
+    model_path = tmp_path / "cascade.joblib"
+    _write_complexity_dataset(complexity_path)
+    assert cli_main.main(["cascade", "--dataset", str(dataset_path), "--out", str(model_path)]) == 0
+    capsys.readouterr()
+    exit_code = cli_main.main(
+        ["complexity", "--dataset", str(complexity_path), "--model", str(model_path)]
+    )
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Route-policy behavior under the evaluated routing configuration" in output
+    assert "cascade routing" in output
+
+
+def test_complexity_subcommand_requires_cascade_model(capsys, tmp_path):
+    dataset_path = _write_keyword_dataset(tmp_path / "prompts.csv")
+    complexity_path = tmp_path / "complexity.csv"
+    model_path = tmp_path / "classifier.joblib"
+    _write_complexity_dataset(complexity_path)
+    assert cli_main.main(
+        ["train", "--dataset", str(dataset_path), "--out", str(model_path)]
+    ) == 0
+    capsys.readouterr()
+    exit_code = cli_main.main(
+        ["complexity", "--dataset", str(complexity_path), "--model", str(model_path)]
+    )
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "complexity failed:" in captured.err
+    assert "not a cascade model" in captured.err

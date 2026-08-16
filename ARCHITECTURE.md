@@ -18,12 +18,13 @@ The operational layers are CLI, Application, Domain, Preprocessing/Signals/Class
 | Layer | Responsibility | Allowed dependencies |
 | --- | --- | --- |
 | CLI | Parse commands and render results. | Application and standard presentation utilities only. |
-| Application | Orchestrate one routing use case and return a structured result. | Domain, preprocessing, signals, classification, routing, configuration. |
+| Application | Orchestrate one routing use case and return a structured result. | Domain, preprocessing, signals, classification, complexity, routing, configuration. |
 | Domain | Define stable concepts such as `RouteDecision`, categories, routes, and signals. | Python standard library only. |
 | Preprocessing | Normalize and prepare prompt text while preserving useful technical terms. | Domain and approved NLP libraries when introduced. |
 | Signals | Extract keyword and phrase evidence for routing and explanation. | Domain, configuration, standard library. |
 | Classification | Build features, train/predict with interchangeable traditional ML models, expose calibrated confidence metadata, and persist a `CascadeModel`. | Domain, configuration, approved ML/NLP libraries. |
-| Routing | Apply the cascade policy to signal and classifier results: validated rules, then calibrated confidence against a validated threshold, then fallback. | Domain and configuration; never providers. |
+| Complexity | Estimate an ordinal prompt-complexity level from length and indicator signals; load the labeled evaluation set. | Domain, configuration, preprocessing, standard library. |
+| Routing | Apply the cascade policy to signal and classifier results and complexity-aware route selection: validated rules, then calibrated confidence against a validated threshold, then fallback; re-route `general_qa`/`summarization` to `reasoning` at high complexity. | Domain and configuration; never providers. |
 | Providers | Map a logical route to executable local/remote services. Deferred until Milestone 6. | Domain, configuration, provider-specific clients. |
 
 The CLI must never directly perform preprocessing, classification, routing, or provider calls. It calls the application layer, which orchestrates the use case and returns a `RouteDecision` for rendering.
@@ -42,6 +43,7 @@ src/routellm/
 ├── preprocessing/
 ├── signals/
 ├── classification/
+├── complexity/
 ├── routing/
 ├── configuration/
 ├── evaluation/
@@ -61,12 +63,13 @@ Prompt
   -> signal extraction
   -> classification
   -> confidence evaluation
+  -> complexity estimation
   -> routing policy
   -> RouteDecision
   -> CLI rendering
 ```
 
-`RouteDecision` is the application boundary: it contains the selected category, confidence metadata, logical route, and evidence needed for truthful explanation. The renderer does not infer or invent rationale.
+`RouteDecision` is the application boundary: it contains the selected category, confidence metadata, logical route, complexity estimate, and evidence needed for truthful explanation. The renderer does not infer or invent rationale.
 
 ### Cascade policy
 
@@ -77,6 +80,12 @@ Prompt
 3. **Fallback** — below threshold, the decision is `unknown`/`fallback`. The real confidence is still reported so uncertainty is never hidden.
 
 Training calibrates on the train split only; rule precision and threshold selection use the validation split; the test split measures the final cascade (metrics, override rate, fallback rate). `RouteService` remains rule-only when no model is provided.
+
+### Complexity policy
+
+`RouteDecision.complexity` is a `ComplexityEstimate` (level `low`/`medium`/`high`, composite score in `[0, 1]`, and the exact signals that produced it). The estimator in `routellm.complexity` uses only the existing preprocessing tokenizer: no LLM, no spaCy, no model file. The composite score blends a capped token count with a capped count of distinct matched indicators across the reasoning, operation, technical, code, and clause vocabularies; `ComplexityConfig` validates every weight, cap, and threshold at construction and stores its mapping fields as read-only proxies so the invariants cannot be invalidated afterward.
+
+Complexity changes routing only through `COMPLEXITY_REROUTES`: at `high` complexity, `general_qa` and `summarization` route to the `reasoning` label. It never changes the category decision, never re-routes `unknown` (always `fallback`), and leaves every other category on its base route. `RouteService` validates the reroute matrix at construction. Quality is measured on the hand-labeled `data/datasets/complexity.csv` evaluation set via `routellm complexity`, which routes each prompt through `RouteService` and reports how often the estimate actually changed a route under the evaluated configuration (rule-only or cascade).
 
 Future execution flow is separate:
 
@@ -98,4 +107,5 @@ Before providers exist, a logical route is a label, not an instruction to execut
 - Configuration must be validated and must not contain secrets; secrets are never committed or logged.
 - Generated ML artifacts must not be committed.
 - Confidence thresholds and rule overrides must be justified by held-out evaluation, not assumed certainty.
+- Complexity levels and thresholds must be justified by measured evaluation on the labeled set, not assumed.
 - spaCy must be benchmarked against simpler preprocessing before it is retained as a baseline dependency.

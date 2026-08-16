@@ -2,13 +2,21 @@
 
 Milestone 1 routing is fully deterministic: category = category with the most
 matched signals; ties are broken by category priority; no signals maps to
-``unknown``.
+``unknown``. Milestone 5 adds complexity-aware route selection: the
+category determines the base route and a high-complexity estimate may
+re-route specific categories to ``reasoning`` (domain.routes.
+``COMPLEXITY_REROUTES``), never changing the category decision itself.
 """
 
 from collections import Counter
 
 from routellm.domain.categories import CATEGORY_PRIORITY
-from routellm.domain.routes import CATEGORY_ROUTES
+from routellm.domain.routes import (
+    CATEGORY_ROUTES,
+    COMPLEXITY_LEVELS,
+    COMPLEXITY_REROUTES,
+    ROUTES,
+)
 from routellm.domain.signal import Signal
 
 
@@ -30,6 +38,31 @@ def decide_category(
     return "unknown"
 
 
-def route_for(category: str) -> str:
-    """Return the logical route for a category."""
+def route_for(category: str, complexity_level: str = COMPLEXITY_LEVELS[0]) -> str:
+    """Return the logical route for a category.
+
+    A complexity level may re-route a category through
+    ``COMPLEXITY_REROUTES``; otherwise the category's base route is used.
+    """
+    reroute = COMPLEXITY_REROUTES.get(category, {}).get(complexity_level)
+    if reroute is not None:
+        return reroute
     return CATEGORY_ROUTES[category]
+
+
+def validate_complexity_routes(
+    reroutes: dict[str, dict[str, str]] = COMPLEXITY_REROUTES,
+    levels: tuple[str, ...] = COMPLEXITY_LEVELS,
+    routes: frozenset[str] = ROUTES,
+) -> None:
+    """Validate a complexity reroute matrix, raising ``ValueError`` on problems."""
+    for category, by_level in reroutes.items():
+        if category not in CATEGORY_ROUTES:
+            raise ValueError(f"Unknown reroute category: {category!r}.")
+        if category == "unknown":
+            raise ValueError("The 'unknown' category must never be re-routed by complexity.")
+        for level, route in by_level.items():
+            if level not in levels:
+                raise ValueError(f"Unknown complexity level {level!r} for category {category!r}.")
+            if route not in routes:
+                raise ValueError(f"Unknown reroute {route!r} for category {category!r}.")

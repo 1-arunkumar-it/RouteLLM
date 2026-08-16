@@ -35,3 +35,29 @@ changed after training.
 The split is checked for leakage: prompts in different splits must have token
 set Jaccard similarity below 0.9, enforced by
 `routellm.classification.dataset.check_no_leakage` during training.
+
+# Complexity evaluation set
+
+`complexity.csv` is the hand-labeled evaluation set for Milestone 5. It is
+kept separate from `prompts.csv` so the Milestone 2 splits, fingerprints, and
+pipeline stay untouched. It is an evaluation set for measuring the heuristic
+estimator, not a training set.
+
+## Labeling policy
+
+- Columns: `text` (the prompt) and `complexity` (one of `low`, `medium`,
+  `high`).
+- `low`: short, single-step prompts (e.g. `What is 2 plus 2`).
+- `medium`: prompts needing a couple of steps or moderate context.
+- `high`: prompts that demand multi-step reasoning, analysis, or a deep
+  technical response.
+- Every row is a distinct phrasing; rows are written to be independent of the
+  category dataset and are not drawn from it.
+- Levels other than the three above are rejected by
+  `load_complexity_dataset`.
+
+## Provenance
+
+- Authored by the RouteLLM developer, August 2026.
+- Source: hand-written prompts in English, informed by SPEC examples.
+- Current size: 90 rows (low 30, medium 30, high 30).

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from routellm.domain.complexity import ComplexityEstimate
 from routellm.domain.signal import Signal
 
 
@@ -12,7 +13,8 @@ class RouteDecision:
     ``confidence`` is ``None`` until a calibrated confidence source exists
     (Milestone 2+). A ``None`` value must never be presented as certainty.
     ``source`` names the origin of the decision: ``"rules"``, ``"classifier"``,
-    or ``"fallback"`` (Milestone 4).
+    or ``"fallback"`` (Milestone 4). ``complexity`` (Milestone 5) is the
+    heuristic estimate that may re-route a category to ``reasoning``.
     """
 
     prompt: str
@@ -22,3 +24,4 @@ class RouteDecision:
     confidence: float | None = None
     source: str = ""
     reason: str = ""
+    complexity: ComplexityEstimate | None = None

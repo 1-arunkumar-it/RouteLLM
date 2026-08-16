@@ -1,8 +1,7 @@
 # RouteLLM Roadmap
 
-Milestones 0–4 are complete. Milestone 5 requires explicit human approval
-before implementation. Later milestones describe sequencing, not permission
-for speculative work.
+Milestones 0–5 are complete. Later milestones describe sequencing, not
+permission for speculative work.
 
 ## Milestone 0 — Python project foundation
 
@@ -74,6 +73,16 @@ ruff clean.
 ## Milestone 5 — Complexity estimation
 
 **Objective:** Add a defined, lightweight complexity signal only after its purpose is specified.
+
+**Status:** Complete. Implemented with explicit human approval of the output
+scale (`low`/`medium`/`high`), a separate hand-labeled evaluation set
+(`data/datasets/complexity.csv`, 90 prompts), and a pure heuristic estimator
+(no LLM, no spaCy). On that labeled set the estimator measures accuracy
+**0.867**, macro F1 **0.862**, mean latency **0.25 ms** (full routing path);
+high-complexity estimates re-routed 11 of 90 prompts to `reasoning` under
+rule-only routing (6 under cascade routing; `complexity --model` measures
+both). Review items on configuration validation and honest reporting were
+fixed and covered by tests. Test suite: 193 passed; ruff clean.
 
 **Deliverables:** documented output scale and routing use, feature/heuristic or model design, evaluation method, and tests.
 
