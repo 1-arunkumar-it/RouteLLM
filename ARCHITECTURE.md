@@ -25,7 +25,7 @@ The operational layers are CLI, Application, Domain, Preprocessing/Signals/Class
 | Classification | Build features, train/predict with interchangeable traditional ML models, expose calibrated confidence metadata, and persist a `CascadeModel`. | Domain, configuration, approved ML/NLP libraries. |
 | Complexity | Estimate an ordinal prompt-complexity level from length and indicator signals; load the labeled evaluation set. | Domain, configuration, preprocessing, standard library. |
 | Routing | Apply the cascade policy to signal and classifier results and complexity-aware route selection: validated rules, then calibrated confidence against a validated threshold, then fallback; re-route `general_qa`/`summarization` to `reasoning` at high complexity. | Domain and configuration; never providers. |
-| Providers | Map a logical route to executable local/remote services. Milestone 6 implements a config-driven `ProviderRegistry` and an Ollama adapter (standard-library `urllib` only), plus single-hop unavailability fallback. Milestone 7 adds health checks, capability profiles, cost-aware routing, and latency-aware routing. | Domain, configuration, provider-specific clients. |
+ | Providers | Map a logical route to executable local/remote services. A config-driven `ProviderRegistry` resolves logical routes to providers; the Ollama adapter uses only the standard library (`urllib`). Supports availability fallback, health checks, capability profiles, cost-aware routing, and latency-aware routing. | Domain, configuration, provider-specific clients. |
 
 The CLI must never directly perform preprocessing, classification, routing, or provider calls. It calls the application layer, which orchestrates the use case and returns a `RouteDecision` for rendering.
 
@@ -51,9 +51,7 @@ src/routellm/
 └── __main__.py
 ```
 
-`cli/` and the package root are expected in Milestone 0. `application/` is deferred to Milestone 1, when a routing use case exists for it to orchestrate. Other directories are created only when their milestone needs them; do not create empty packages as architectural placeholders.
-
-Top-level `data/` holds raw, processed, and versioned dataset files when Milestone 2 begins. Top-level `models/` is for generated local model artifacts and is ignored by Git. `tests/` mirrors only the behavior that exists.
+Top-level `data/` holds raw, processed, and versioned dataset files. Top-level `models/` is for generated local model artifacts and is ignored by Git. `tests/` mirrors only the behavior that exists.
 
 ## Data flow
 
@@ -87,7 +85,7 @@ Training calibrates on the train split only; rule precision and threshold select
 
 Complexity changes routing only through `COMPLEXITY_REROUTES`: at `high` complexity, `general_qa` and `summarization` route to the `reasoning` label. It never changes the category decision, never re-routes `unknown` (always `fallback`), and leaves every other category on its base route. `RouteService` validates the reroute matrix at construction. Quality is measured on the hand-labeled `data/datasets/complexity.csv` evaluation set via `routellm complexity`, which routes each prompt through `RouteService` and reports how often the estimate actually changed a route under the evaluated configuration (rule-only or cascade).
 
-Execution flow is separate from routing (Milestone 6):
+ Execution flow is separate from routing:
 
 ```text
 RouteDecision
@@ -98,7 +96,7 @@ RouteDecision
 
 Routing always selects a logical label such as `coding-local`. Execution is an optional downstream step: `ExecutionService` resolves that label through `ProviderRegistry` against a validated `ProviderConfig`, calls the Ollama adapter for the configured model, and reports a `ProviderResponse` (`ok`, `not_configured`, `unavailable`, or `error`). When the primary provider is unavailable, a configured single-hop fallback route is attempted before reporting `unavailable` (SPEC section 38). `RouteService` never touches providers, so the routing engine remains fully usable with no Ollama installation; a logical route is a label, not an instruction to execute a model, until execution is explicitly requested.
 
-Milestone 7 adds cost-aware and latency-aware routing via `RouteProfile` metadata (cost per 1k tokens, estimated latency, capabilities) and `RoutingConstraints` (max cost per prompt, max latency). The cascade policy applies these constraints after selecting a route, rerouting to a cheaper or faster alternative when the selected route violates a constraint and a suitable alternative exists. Health checks (`routellm health`) provide availability and response time data, persisted to `data/health/` for trend analysis.
+Cost-aware and latency-aware routing is supported via `RouteProfile` metadata (cost per 1k tokens, estimated latency, capabilities) and `RoutingConstraints` (max cost per prompt, max latency). The cascade policy applies these constraints after selecting a route, rerouting to a cheaper or faster alternative when the selected route violates a constraint and a suitable alternative exists. Health checks (`routellm health`) provide availability and response time data, persisted to `data/health/` for trend analysis.
 
 ## Architectural constraints
 
@@ -111,4 +109,4 @@ Milestone 7 adds cost-aware and latency-aware routing via `RouteProfile` metadat
 - Generated ML artifacts must not be committed.
 - Confidence thresholds and rule overrides must be justified by held-out evaluation, not assumed certainty.
 - Complexity levels and thresholds must be justified by measured evaluation on the labeled set, not assumed.
-- spaCy must be benchmarked against simpler preprocessing before it is retained as a baseline dependency.
+

@@ -1,141 +1,35 @@
-# RouteLLM Roadmap
+# Project Timeline
 
-Milestones 0–7 are complete. Later milestones describe sequencing, not
-permission for speculative work.
+A progressive development sequence from foundation to advanced routing. Each milestone builds on the previous one.
 
 ## Milestone 0 — Python project foundation
 
-**Objective:** Establish an installable, testable Python project foundation.
-
-**Deliverables:** `pyproject.toml`; a minimal `src/routellm` package; console-entry-point-ready CLI skeleton; README; Git ignore rules; pytest structure.
-
-**Prerequisites:** None.
-
-**Acceptance criteria:** Project metadata targets Python 3.11+; `routellm --help` works after the CLI is implemented; tests are discoverable and pass; no routing functionality is claimed.
-
-**Out of scope:** preprocessing, categories, keyword rules, datasets, ML, providers, interactive routing, and Ollama.
+Establish an installable, testable Python project with a CLI skeleton and pytest structure.
 
 ## Milestone 1 — Rule-based routing
 
-**Objective:** Prove the end-to-end routing flow with deterministic, explainable rules.
-
-**Deliverables:** prompt preprocessing, configurable keyword/phrase signals, a small taxonomy, deterministic policy, structured decisions, and terminal explanations.
-
-**Prerequisites:** Milestone 0 complete.
-
-**Acceptance criteria:** Supported obvious prompts produce a logical route and only actual detected signals are displayed; rule behavior has unit and integration tests.
-
-**Out of scope:** supervised ML, trained confidence scores, subcategories beyond demonstrated need, complexity estimation, and provider execution.
+Prove the end-to-end routing flow with deterministic, explainable rules: keyword signals, phrase detection, and a small taxonomy.
 
 ## Milestone 2 — Dataset + TF-IDF classifier
 
-**Objective:** Add a measurable supervised classification baseline.
-
-**Deliverables:** labeled dataset policy and splits, TF-IDF word n-gram features, one traditional classifier, prediction persistence/loading, confidence metadata, and evaluation reporting.
-
-**Prerequisites:** Milestone 1 behavior and taxonomy stabilized; dataset provenance and labeling guidance defined.
-
-**Acceptance criteria:** Train/validation/test sets are disjoint and checked for leakage; metrics are generated from actual data; predictions work locally without an LLM.
-
-**Out of scope:** classifier selection, rule/ML cascading, embedding methods, complexity, and providers.
+Add a measurable supervised classification baseline with labeled data, TF-IDF features, and held-out evaluation.
 
 ## Milestone 3 — Classifier benchmarking
 
-**Objective:** Select a baseline classifier from evidence.
-
-**Deliverables:** comparable Logistic Regression, Linear SVM, and Naive Bayes experiments; accuracy, precision, recall, F1, latency, and model-size report; selection rationale.
-
-**Prerequisites:** Milestone 2 dataset and repeatable evaluation harness.
-
-**Acceptance criteria:** All candidates use equivalent splits/features where appropriate and results are measured, not hard-coded.
-
-**Out of scope:** automatic production-style model selection, provider routing, embeddings, and complexity.
+Select a baseline classifier from evidence: compare Logistic Regression, Linear SVM, and Naive Bayes on accuracy, F1, latency, and model size.
 
 ## Milestone 4 — Cascaded routing
 
-**Objective:** Combine rule evidence and statistical prediction safely.
-
-**Status:** Complete. Verified locally on `data/datasets/prompts.csv` (seed 42):
-threshold **0.35** (validation macro F1 **0.925**); rule overrides at precision
-≥ 0.90 for coding, creative_writing, math, summarization, translation; test
-accuracy **0.973** / macro F1 **0.976**; rule decisions **59.5%**, classifier
-**40.5%**, fallback **0.0%**, mean latency **0.20 ms**. Test suite: 138 passed;
-ruff clean.
-
-**Deliverables:** cascade policy, validated/calibrated confidence handling, configurable thresholds, unknown/fallback behavior, and explanation merging.
-
-**Prerequisites:** Milestone 3 model choice and held-out evaluation of rules and confidence.
-
-**Acceptance criteria:** Overrides and fallback decisions are measurable, configurable, and do not present uncertainty as certainty.
-
-**Out of scope:** executable provider calls, cost optimization, embeddings, and complexity.
+Combine rule evidence and statistical prediction safely with calibrated confidence, validated thresholds, and graceful fallback.
 
 ## Milestone 5 — Complexity estimation
 
-**Objective:** Add a defined, lightweight complexity signal only after its purpose is specified.
-
-**Status:** Complete. Implemented with explicit human approval of the output
-scale (`low`/`medium`/`high`), a separate hand-labeled evaluation set
-(`data/datasets/complexity.csv`, 90 prompts), and a pure heuristic estimator
-(no LLM, no spaCy). On that labeled set the estimator measures accuracy
-**0.867**, macro F1 **0.862**, mean latency **0.25 ms** (full routing path);
-high-complexity estimates re-routed 11 of 90 prompts to `reasoning` under
-rule-only routing (6 under cascade routing; `complexity --model` measures
-both). Review items on configuration validation and honest reporting were
-fixed and covered by tests. Test suite: 193 passed; ruff clean.
-
-**Deliverables:** documented output scale and routing use, feature/heuristic or model design, evaluation method, and tests.
-
-**Prerequisites:** An approved complexity definition and a demonstrated routing need.
-
-**Acceptance criteria:** Complexity changes behavior only according to an explicit policy and has measured evaluation.
-
-**Out of scope:** LLM-based complexity estimation and unvalidated routing changes.
+Add a lightweight heuristic complexity estimator with a hand-labeled evaluation set, supporting complexity-aware route rerouting.
 
 ## Milestone 6 — Ollama integration
 
-**Objective:** Resolve logical routes to configured local Ollama models.
-
-**Status:** Complete. `routellm providers` lists every logical route with its
-configured provider/model and live availability, and `routellm run` routes a
-prompt and executes the selected model through the provider. Verified live on
-this machine (Ollama 0.32.13, `qwen2.5-coder:3b`): a coding prompt executed
-through `coding-local` (status `ok`); a configured model missing from the
-server fell back to `general-local`; `calculator` reported `not_configured`.
-The adapter uses only the standard library (`urllib`); the normal test suite
-runs fully offline with an injected HTTP seam and requires no Ollama
-installation. Test suite: 257 passed; ruff clean.
-
-**Deliverables:** provider registry, validated model configuration, Ollama adapter, availability/fallback behavior, and mocked provider tests.
-
-**Prerequisites:** Milestone 4 routing decisions; explicit provider configuration design.
-
-**Acceptance criteria:** The routing engine remains usable with no Ollama installation; normal tests use mocks; model/provider names come from configuration.
-
-**Out of scope:** cloud-provider integration, provider-specific routing policy, and network-required baseline classification.
+Resolve logical routes to configured local Ollama models with a provider registry, adapter, fallback behavior, and fully mocked tests.
 
 ## Milestone 7 — Advanced routing
 
-**Objective:** Evaluate only evidence-backed enhancements.
-
-**Status:** Complete. Four capabilities implemented with documented metrics and
-baseline comparisons: (1) provider health checks via `routellm health`, (2)
-model capability profiles via `[profiles]` TOML sections, (3) cost-aware
-routing via `[constraints]` and `RouteProfile` metadata, and (4) latency-aware
-routing using both estimated (profiles) and measured (history) data. The
-cascade policy applies constraints after selecting a route, rerouting to a
-cheaper or faster alternative when available. Test suite: 303 passed; ruff clean.
-
-**Deliverables:** provider health checks with file persistence, capability
-profiles with cost/latency/capability metadata, cost-aware routing, latency-aware
-routing, and extended benchmark reporting with cost/latency summaries.
-
-**Prerequisites:** Milestone 6 provider execution; measured baseline quality.
-
-**Acceptance criteria:** Each capability has a documented metric (health uptime,
-capability coverage, cost per prompt, latency per route), comparison against
-baseline (one-shot health, no profiles, no cost/latency consideration), and no
-regression in privacy or explainability.
-
-**Out of scope:** unmeasured complexity, distributed orchestration, web UI, RAG,
-and broad framework adoption.
+Add provider health checks, model capability profiles, cost-aware routing, and latency-aware routing with constraint-based rerouting.

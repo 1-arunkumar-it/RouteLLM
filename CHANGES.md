@@ -1,22 +1,39 @@
-# Outstanding changes
+# Changelog
 
-## Milestone 7 — Advanced routing
+## Advanced routing
 
-- Complete: provider health checks (`routellm health` with file persistence),
-  model capability profiles (`[profiles]` TOML sections with cost, latency, and
-  capability metadata), cost-aware routing (`[constraints]` with rerouting to
-  cheaper alternatives), latency-aware routing (estimated + measured data), and
-  extended benchmark reporting with cost/latency summaries.
-- The cascade policy applies cost and latency constraints after selecting a
-  route, rerouting to a suitable alternative when the selected route violates
-  a constraint and a cheaper/faster option with overlapping capabilities exists.
+- Provider health checks with file persistence
+- Model capability profiles with cost, latency, and capability metadata
+- Cost-aware routing with constraint-based rerouting to cheaper alternatives
+- Latency-aware routing using both estimated and measured data
+- Extended benchmark reporting with cost/latency summaries
 
-## Milestone 6 — Ollama integration
+## Ollama integration
 
-- Complete: provider registry, validated provider configuration (TOML
-  override), Ollama adapter (standard-library `urllib`), availability/fallback
-  behavior, `routellm run` and `routellm providers`, and fully mocked provider
-  tests. The routing engine remains usable with no Ollama installation.
-- Resolved the Milestone 5 review item: `ComplexityConfig.levels` is now
-  restricted to the fixed routing-policy scale `("low", "medium", "high")`,
-  with a regression test covering non-fixed names.
+- Provider registry with validated TOML configuration
+- Ollama adapter using only standard library (`urllib`)
+- Availability fallback and `routellm run` / `routellm providers` commands
+- Fully mocked provider tests; routing engine usable with no Ollama installation
+
+## Cascaded routing
+
+- Cascade policy combining rules, classifier, and fallback
+- Calibrated confidence with validated thresholds
+- Unknown/fallback behavior and explanation merging
+
+## Classifier benchmarking
+
+- Logistic Regression, Linear SVM, and Naive Bayes comparison
+- Accuracy, precision, recall, F1, latency, and model size reporting
+
+## Dataset + TF-IDF classifier
+
+- Labeled dataset with stratified splits and leakage checking
+- TF-IDF word n-gram features
+- Prediction persistence and evaluation reporting
+
+## Rule-based routing
+
+- Preprocessing and tokenization
+- Configurable keyword/phrase signals
+- Deterministic policy and structured decisions

@@ -1,14 +1,14 @@
 # Labeled prompt dataset
 
-`prompts.csv` is the curated, versioned labeled dataset for Milestone 2. It is
-hand-authored to represent varied phrasings of each intent (SPEC section 19)
-rather than exact template repetitions.
+`prompts.csv` is the curated, versioned labeled dataset. It is hand-authored
+to represent varied phrasings of each intent rather than exact template
+repetitions.
 
 ## Labeling policy
 
-- Columns: `text` (the prompt) and `category` (one of the seven Milestone 1
-  categories: `coding`, `math`, `translation`, `summarization`,
-  `creative_writing`, `general_qa`, `unknown`).
+- Columns: `text` (the prompt) and `category` (one of seven categories:
+  `coding`, `math`, `translation`, `summarization`, `creative_writing`,
+  `general_qa`, `unknown`).
 - `unknown` rows are off-topic or vague prompts that should not be confidently
   classified into any concrete category.
 - Every row is a distinct phrasing; duplicate or near-duplicate rows are
@@ -38,10 +38,10 @@ set Jaccard similarity below 0.9, enforced by
 
 # Complexity evaluation set
 
-`complexity.csv` is the hand-labeled evaluation set for Milestone 5. It is
-kept separate from `prompts.csv` so the Milestone 2 splits, fingerprints, and
-pipeline stay untouched. It is an evaluation set for measuring the heuristic
-estimator, not a training set.
+`complexity.csv` is the hand-labeled evaluation set for the complexity
+estimator. It is kept separate from `prompts.csv` so the classification
+splits, fingerprints, and pipeline stay untouched. It is an evaluation set,
+not a training set.
 
 ## Labeling policy
 
