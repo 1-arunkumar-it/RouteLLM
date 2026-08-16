@@ -141,3 +141,51 @@ def test_generate_raises_on_missing_text():
     adapter = OllamaAdapter(config=OllamaConfig(), request=request)
     with pytest.raises(OllamaError, match="no text"):
         adapter.generate("m", "p")
+
+
+# --- Milestone 7: Health check adapter tests ---
+
+
+def test_check_health_available_model():
+    def request(method, url, payload, timeout):
+        return 200, _json_body({"models": [{"name": "qwen2.5-coder:3b"}]})
+
+    adapter = OllamaAdapter(config=OllamaConfig(), request=request)
+    result = adapter.check_health("coding-local", "ollama", "qwen2.5-coder:3b")
+    assert result.route == "coding-local"
+    assert result.provider == "ollama"
+    assert result.model == "qwen2.5-coder:3b"
+    assert result.available is True
+    assert result.response_time_ms is not None
+    assert result.error is None
+
+
+def test_check_health_missing_model():
+    def request(method, url, payload, timeout):
+        return 200, _json_body({"models": [{"name": "other-model"}]})
+
+    adapter = OllamaAdapter(config=OllamaConfig(), request=request)
+    result = adapter.check_health("coding-local", "ollama", "qwen2.5-coder:3b")
+    assert result.available is False
+    assert "not found" in result.error
+
+
+def test_check_health_server_down():
+    def request(method, url, payload, timeout):
+        raise OllamaError("Could not reach Ollama")
+
+    adapter = OllamaAdapter(config=OllamaConfig(), request=request)
+    result = adapter.check_health("coding-local", "ollama", "qwen2.5-coder:3b")
+    assert result.available is None
+    assert "Could not reach" in result.error
+    assert result.response_time_ms is not None
+
+
+def test_check_health_has_checked_at_timestamp():
+    def request(method, url, payload, timeout):
+        return 200, _json_body({"models": [{"name": "m"}]})
+
+    adapter = OllamaAdapter(config=OllamaConfig(), request=request)
+    result = adapter.check_health("route", "provider", "m")
+    assert result.checked_at is not None
+    assert "T" in result.checked_at

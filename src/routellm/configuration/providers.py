@@ -1,4 +1,4 @@
-"""Validated provider configuration (Milestone 6).
+"""Validated provider configuration (Milestone 6, extended in Milestone 7).
 
 Configuration is the only place where provider names, model names, hosts, and
 fallbacks are defined; routing code never names a provider or model directly
@@ -8,6 +8,9 @@ mapping fields are deeply immutable, and nothing here may contain secrets.
 A logical route maps to a ``provider:model`` pair. Only ``ollama`` is a known
 provider in this milestone. Fallbacks are single-hop route mappings used when
 a provider is unavailable; they never alter the routing decision itself.
+
+Milestone 7 adds ``[profiles]``, ``[constraints]``, and ``[health]`` TOML
+sections for cost-aware routing, latency-aware routing, and health checks.
 """
 
 import tomllib
@@ -91,6 +94,79 @@ class OllamaConfig:
         object.__setattr__(self, "host", host)
 
 
+KNOWN_CAPABILITIES = frozenset(
+    {"code", "reasoning", "qa", "translation", "math", "creative", "summarization"}
+)
+
+
+@dataclass(frozen=True)
+class HealthConfig:
+    """Settings for provider health checks."""
+
+    timeout: float = 5.0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.timeout, (int, float)):
+            raise ValueError(
+                f"health timeout must be a number, got {type(self.timeout).__name__}."
+            )
+        if self.timeout <= 0:
+            raise ValueError(f"health timeout must be > 0, got {self.timeout}.")
+
+
+@dataclass(frozen=True)
+class RouteProfile:
+    """Per-route cost, latency, and capability metadata.
+
+    ``cost_per_1k_tokens`` is the estimated cost in USD per 1000 tokens.
+    ``estimated_latency_ms`` is the expected response time in milliseconds.
+    ``capabilities`` is the set of capability tags this route's model supports.
+    """
+
+    cost_per_1k_tokens: float | None = None
+    estimated_latency_ms: float | None = None
+    capabilities: frozenset[str] = frozenset()
+
+    def __post_init__(self) -> None:
+        if self.cost_per_1k_tokens is not None and self.cost_per_1k_tokens < 0:
+            raise ValueError(
+                f"cost_per_1k_tokens must be >= 0, got {self.cost_per_1k_tokens}."
+            )
+        if self.estimated_latency_ms is not None and self.estimated_latency_ms < 0:
+            raise ValueError(
+                f"estimated_latency_ms must be >= 0, got {self.estimated_latency_ms}."
+            )
+        unknown = self.capabilities - KNOWN_CAPABILITIES
+        if unknown:
+            raise ValueError(
+                f"Unknown capabilities {sorted(unknown)!r}; "
+                f"known capabilities: {sorted(KNOWN_CAPABILITIES)!r}."
+            )
+
+
+@dataclass(frozen=True)
+class RoutingConstraints:
+    """Global routing constraints for cost-aware and latency-aware routing.
+
+    ``max_cost_per_prompt`` is the maximum allowed estimated cost per prompt
+    in USD. ``max_latency_ms`` is the maximum allowed provider latency in
+    milliseconds. None means "no constraint".
+    """
+
+    max_cost_per_prompt: float | None = None
+    max_latency_ms: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.max_cost_per_prompt is not None and self.max_cost_per_prompt < 0:
+            raise ValueError(
+                f"max_cost_per_prompt must be >= 0, got {self.max_cost_per_prompt}."
+            )
+        if self.max_latency_ms is not None and self.max_latency_ms < 0:
+            raise ValueError(
+                f"max_latency_ms must be >= 0, got {self.max_latency_ms}."
+            )
+
+
 @dataclass(frozen=True)
 class ProviderConfig:
     """Validated route-to-provider mapping and provider-unavailability fallbacks.
@@ -105,13 +181,23 @@ class ProviderConfig:
     routes: dict[str, tuple[str, str]] | None = None
     fallbacks: dict[str, str] | None = None
     ollama: OllamaConfig | None = None
+    profiles: dict[str, RouteProfile] | None = None
+    constraints: RoutingConstraints | None = None
+    health: HealthConfig | None = None
 
     def __post_init__(self) -> None:
         routes = dict(self.routes if self.routes is not None else DEFAULT_ROUTES)
         fallbacks = dict(self.fallbacks if self.fallbacks is not None else DEFAULT_FALLBACKS)
         ollama = self.ollama if self.ollama is not None else OllamaConfig()
+        profiles = dict(self.profiles) if self.profiles is not None else {}
+        constraints = self.constraints if self.constraints is not None else RoutingConstraints()
+        health = self.health if self.health is not None else HealthConfig()
         if not isinstance(ollama, OllamaConfig):
             raise ValueError("ollama must be an OllamaConfig instance.")
+        if not isinstance(constraints, RoutingConstraints):
+            raise ValueError("constraints must be a RoutingConstraints instance.")
+        if not isinstance(health, HealthConfig):
+            raise ValueError("health must be a HealthConfig instance.")
         for route, (provider, model) in routes.items():
             if route not in ROUTES:
                 raise ValueError(f"Unknown route {route!r} in provider config.")
@@ -140,9 +226,15 @@ class ProviderConfig:
                     f"Fallback chains are not allowed: {source!r} -> {target!r} "
                     "but the target has its own fallback."
                 )
+        for route in profiles:
+            if route not in ROUTES:
+                raise ValueError(f"Unknown route {route!r} in profiles config.")
         object.__setattr__(self, "routes", MappingProxyType(routes))
         object.__setattr__(self, "fallbacks", MappingProxyType(fallbacks))
         object.__setattr__(self, "ollama", ollama)
+        object.__setattr__(self, "profiles", MappingProxyType(profiles))
+        object.__setattr__(self, "constraints", constraints)
+        object.__setattr__(self, "health", health)
 
 
 def _parse_provider_model(value: str, route: str) -> tuple[str, str]:
@@ -174,8 +266,10 @@ def load_provider_config(path: str | None = None) -> ProviderConfig:
 
     With no ``path`` the validated defaults are returned. Otherwise the TOML
     file may define ``[ollama]`` (host, timeouts, temperature, num_predict),
-    ``[routes]`` (``route = "provider:model"``), and ``[fallbacks]``
-    (``route = "fallback-route"``); each section must be a table. Keys present
+    ``[routes]`` (``route = "provider:model"``), ``[fallbacks]``
+    (``route = "fallback-route"``), ``[profiles.<route>]`` (cost, latency,
+    capabilities), ``[constraints]`` (max_cost_per_prompt, max_latency_ms),
+    and ``[health]`` (timeout); each section must be a table. Keys present
     in the file override the defaults and the whole result is validated.
     """
     if path is None:
@@ -203,8 +297,36 @@ def load_provider_config(path: str | None = None) -> ProviderConfig:
         raise ValueError(
             f"Unknown [ollama] option(s) {sorted(unknown)!r}; expected one of {sorted(known)!r}."
         )
+    profiles: dict[str, RouteProfile] = {}
+    profiles_table = _require_table(data, "profiles", file_path)
+    for route, profile_data in profiles_table.items():
+        if not isinstance(profile_data, dict):
+            raise ValueError(
+                f"Invalid TOML in {file_path}: [profiles.{route}] must be a table, "
+                f"got {type(profile_data).__name__}."
+            )
+        caps = profile_data.get("capabilities", [])
+        if not isinstance(caps, list):
+            raise ValueError(
+                f"Invalid TOML in {file_path}: capabilities for {route!r} must be a list."
+            )
+        profiles[route] = RouteProfile(
+            cost_per_1k_tokens=profile_data.get("cost_per_1k_tokens"),
+            estimated_latency_ms=profile_data.get("estimated_latency_ms"),
+            capabilities=frozenset(caps),
+        )
+    constraints_data = _require_table(data, "constraints", file_path)
+    constraints = RoutingConstraints(
+        max_cost_per_prompt=constraints_data.get("max_cost_per_prompt"),
+        max_latency_ms=constraints_data.get("max_latency_ms"),
+    )
+    health_data = _require_table(data, "health", file_path)
+    health = HealthConfig(timeout=health_data.get("timeout", 5.0))
     return ProviderConfig(
         routes=routes,
         fallbacks=fallbacks,
         ollama=OllamaConfig(**ollama_kwargs),
+        profiles=profiles or None,
+        constraints=constraints,
+        health=health,
     )

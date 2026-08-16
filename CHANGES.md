@@ -1,5 +1,16 @@
 # Outstanding changes
 
+## Milestone 7 — Advanced routing
+
+- Complete: provider health checks (`routellm health` with file persistence),
+  model capability profiles (`[profiles]` TOML sections with cost, latency, and
+  capability metadata), cost-aware routing (`[constraints]` with rerouting to
+  cheaper alternatives), latency-aware routing (estimated + measured data), and
+  extended benchmark reporting with cost/latency summaries.
+- The cascade policy applies cost and latency constraints after selecting a
+  route, rerouting to a suitable alternative when the selected route violates
+  a constraint and a cheaper/faster option with overlapping capabilities exists.
+
 ## Milestone 6 — Ollama integration
 
 - Complete: provider registry, validated provider configuration (TOML

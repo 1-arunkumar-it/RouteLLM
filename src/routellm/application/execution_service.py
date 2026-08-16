@@ -5,20 +5,26 @@ logical route and ``ExecutionService`` resolves that route to a configured
 provider/model and calls it. The router therefore stays fully usable without
 Ollama. When the primary provider is unavailable, a configured single-hop
 fallback route is attempted before reporting ``unavailable`` (SPEC section 38).
+
+Milestone 7 adds health check execution and persistence.
 """
 
+import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from routellm.configuration.providers import ProviderConfig
 from routellm.domain.provider import (
     STATUS_UNAVAILABLE,
+    HealthCheckResult,
     ProviderResponse,
     ResolvedProvider,
 )
 from routellm.domain.route_decision import RouteDecision
 from routellm.providers.ollama import OllamaAdapter, OllamaError
 from routellm.providers.registry import ProviderRegistry
+from routellm.routing.cascade import apply_constraints
 
 _ROUTE_ORDER = (
     "coding-local",
@@ -72,7 +78,11 @@ class ExecutionService:
         return OllamaAdapter(config=config)
 
     def execute(self, decision: RouteDecision) -> ProviderResponse:
-        """Execute ``decision`` through its configured provider with fallback."""
+        """Execute ``decision`` through its configured provider with fallback.
+
+        When cost or latency profiles and constraints are configured, the route
+        may be rerouted to a cheaper or faster alternative before execution.
+        """
         registry = self._registry()
         resolved = registry.resolve(decision.route)
         if resolved is None:
@@ -86,6 +96,20 @@ class ExecutionService:
                 error=f"No provider is configured for route {decision.route!r}.",
                 latency_ms=None,
             )
+        config = self._effective_config()
+        if config.profiles and config.constraints:
+            prompt_word_count = len(decision.prompt.split())
+            alt_route, _est_cost, _est_lat = apply_constraints(
+                decision.route,
+                decision.category,
+                dict(config.profiles),
+                config.constraints,
+                prompt_word_count=prompt_word_count,
+            )
+            if alt_route != decision.route:
+                alt_resolved = registry.resolve(alt_route)
+                if alt_resolved is not None:
+                    resolved = alt_resolved
         adapter = self._make_adapter()
         if not adapter.has_model(resolved.model):
             return self._unavailable(decision, resolved, registry, adapter)
@@ -207,3 +231,100 @@ class ExecutionService:
                     )
                 )
         return tuple(rows)
+
+    def health_check(self) -> tuple[HealthCheckResult, ...]:
+        """Check health of every configured provider route.
+
+        Returns a ``HealthCheckResult`` per route in display order. Unconfigured
+        routes get a result with ``available=None`` and an explanatory error.
+        """
+        registry = self._registry()
+        adapter = self._make_adapter()
+        health_timeout = self._effective_config().health.timeout
+        results: list[HealthCheckResult] = []
+        for route in _ROUTE_ORDER:
+            resolved = registry.resolve(route)
+            if resolved is None:
+                from datetime import datetime, timezone
+
+                results.append(
+                    HealthCheckResult(
+                        route=route,
+                        provider=None,
+                        model=None,
+                        available=None,
+                        response_time_ms=None,
+                        checked_at=datetime.now(timezone.utc).isoformat(),
+                        error=f"No provider configured for route {route!r}.",
+                    )
+                )
+            else:
+                results.append(
+                    adapter.check_health(
+                        route, resolved.provider, resolved.model,
+                        timeout=health_timeout,
+                    )
+                )
+        return tuple(results)
+
+
+_HEALTH_DIR = Path("data/health")
+
+
+def save_health_check(
+    results: tuple[HealthCheckResult, ...], directory: Path | None = None
+) -> Path:
+    """Save health check results to a timestamped JSON file.
+
+    Returns the path to the created file.
+    """
+    target = directory if directory is not None else _HEALTH_DIR
+    target.mkdir(parents=True, exist_ok=True)
+    from datetime import datetime, timezone
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")
+    path = target / f"{ts}.json"
+    data = [
+        {
+            "route": r.route,
+            "provider": r.provider,
+            "model": r.model,
+            "available": r.available,
+            "response_time_ms": r.response_time_ms,
+            "checked_at": r.checked_at,
+            "error": r.error,
+        }
+        for r in results
+    ]
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def load_health_history(
+    directory: Path | None = None, limit: int = 10
+) -> tuple[HealthCheckResult, ...]:
+    """Load the most recent health check results from the health directory.
+
+    Returns up to ``limit`` results from the most recent file.
+    """
+    target = directory if directory is not None else _HEALTH_DIR
+    if not target.exists():
+        return ()
+    files = sorted(target.glob("*.json"), reverse=True)
+    if not files:
+        return ()
+    latest = files[0]
+    raw = json.loads(latest.read_text(encoding="utf-8"))
+    results = [
+        HealthCheckResult(
+            route=entry["route"],
+            provider=entry["provider"],
+            model=entry["model"],
+            available=entry["available"],
+            response_time_ms=entry["response_time_ms"],
+            checked_at=entry["checked_at"],
+            error=entry.get("error"),
+        )
+        for entry in raw
+    ]
+    return tuple(results[:limit])

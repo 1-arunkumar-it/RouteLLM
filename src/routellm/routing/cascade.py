@@ -14,10 +14,13 @@ and stored in the cascade model. On the current dataset
 math, summarization, and translation; the cascade measured 0.973 accuracy and
 0.976 macro F1 on the held-out test split. These numbers are data-dependent
 and regenerated on every training run.
+
+Milestone 7 adds cost-aware and latency-aware constraint application.
 """
 
 from dataclasses import dataclass
 
+from routellm.configuration.providers import RouteProfile, RoutingConstraints
 from routellm.domain.classifier_prediction import ClassifierPrediction
 from routellm.domain.signal import Signal
 from routellm.routing import policy
@@ -81,3 +84,121 @@ def apply_cascade(
         threshold=threshold,
         override_categories=override_categories,
     )[0]
+
+
+def estimate_cost(word_count: int, profile: RouteProfile) -> float | None:
+    """Estimate the cost of generating a response for the given word count.
+
+    Returns the estimated cost in USD, or None if the profile has no cost data.
+    Uses the approximation that 1 word ≈ 1.3 tokens.
+    """
+    if profile.cost_per_1k_tokens is None:
+        return None
+    tokens = word_count * 1.3
+    return (tokens / 1000) * profile.cost_per_1k_tokens
+
+
+def apply_constraints(
+    route: str,
+    category: str,
+    profiles: dict[str, RouteProfile],
+    constraints: RoutingConstraints,
+    *,
+    prompt_word_count: int,
+) -> tuple[str, float | None, float | None]:
+    """Apply cost and latency constraints to reroute when necessary.
+
+    Returns ``(route, estimated_cost, estimated_latency_ms)`` where the route
+    may differ from the input when a constraint is violated and a suitable
+    alternative exists.
+    """
+    profile = profiles.get(route)
+    if profile is None:
+        return route, None, None
+
+    cost = estimate_cost(prompt_word_count, profile)
+    latency = profile.estimated_latency_ms
+
+    cost_violated = (
+        constraints.max_cost_per_prompt is not None
+        and cost is not None
+        and cost > constraints.max_cost_per_prompt
+    )
+    latency_violated = (
+        constraints.max_latency_ms is not None
+        and latency is not None
+        and latency > constraints.max_latency_ms
+    )
+
+    if not cost_violated and not latency_violated:
+        return route, cost, latency
+
+    alternative = _find_alternative(
+        route, profiles, constraints, cost_violated, latency_violated,
+        prompt_word_count=prompt_word_count,
+    )
+    if alternative is not None:
+        alt_profile = profiles.get(alternative)
+        alt_cost = estimate_cost(prompt_word_count, alt_profile) if alt_profile else None
+        alt_latency = alt_profile.estimated_latency_ms if alt_profile else None
+        return alternative, alt_cost, alt_latency
+
+    return route, cost, latency
+
+
+def _find_alternative(
+    route: str,
+    profiles: dict[str, RouteProfile],
+    constraints: RoutingConstraints,
+    cost_violated: bool,
+    latency_violated: bool,
+    *,
+    prompt_word_count: int,
+) -> str | None:
+    """Find a cheaper or faster alternative route with overlapping capabilities.
+
+    The alternative must satisfy all violated constraints (not merely be
+    better than the current route). When multiple candidates qualify, the
+    one with the lowest combined cost-and-latency score wins.
+    """
+    current = profiles.get(route)
+    if current is None:
+        return None
+    best: str | None = None
+    best_score: float | None = None
+    for alt_route, alt_profile in profiles.items():
+        if alt_route == route:
+            continue
+        if not alt_profile.capabilities & current.capabilities:
+            continue
+        if cost_violated:
+            if alt_profile.cost_per_1k_tokens is None:
+                continue
+            if current.cost_per_1k_tokens is not None:
+                if alt_profile.cost_per_1k_tokens >= current.cost_per_1k_tokens:
+                    continue
+            alt_cost = estimate_cost(prompt_word_count, alt_profile)
+            if (
+                alt_cost is not None
+                and constraints.max_cost_per_prompt is not None
+                and alt_cost > constraints.max_cost_per_prompt
+            ):
+                continue
+        if latency_violated:
+            if alt_profile.estimated_latency_ms is None:
+                continue
+            if current.estimated_latency_ms is not None:
+                if alt_profile.estimated_latency_ms >= current.estimated_latency_ms:
+                    continue
+            if (
+                constraints.max_latency_ms is not None
+                and alt_profile.estimated_latency_ms > constraints.max_latency_ms
+            ):
+                continue
+        cost_val = alt_profile.cost_per_1k_tokens or 0
+        lat_val = (alt_profile.estimated_latency_ms or 0) / 1000
+        score = cost_val + lat_val
+        if best_score is None or score < best_score:
+            best = alt_route
+            best_score = score
+    return best

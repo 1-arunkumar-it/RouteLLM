@@ -138,3 +138,59 @@ def test_status_table_marks_unavailable_when_server_down():
 def test_service_rejects_non_provider_config():
     with pytest.raises(ValueError, match="ProviderConfig"):
         ExecutionService(config={"routes": {}})
+
+
+# --- Milestone 7: Constraint application tests ---
+
+
+def test_execute_applies_cost_constraints_and_reroutes():
+    from routellm.configuration.providers import ProviderConfig, RouteProfile, RoutingConstraints
+
+    config = ProviderConfig(
+        routes={
+            "coding-local": ("ollama", "coding-model"),
+            "general-local": ("ollama", "general-model"),
+        },
+        profiles={
+            "coding-local": RouteProfile(
+                cost_per_1k_tokens=0.1, estimated_latency_ms=150,
+                capabilities=frozenset({"code"}),
+            ),
+            "general-local": RouteProfile(
+                cost_per_1k_tokens=0.001, estimated_latency_ms=100,
+                capabilities=frozenset({"code", "qa"}),
+            ),
+        },
+        constraints=RoutingConstraints(max_cost_per_prompt=0.001),
+    )
+    adapter = FakeAdapter(
+        models={"coding-model", "general-model"}, generated="rerouted"
+    )
+    prompt = " ".join(["word"] * 100)
+    response = _service(adapter, config).execute(
+        _decision("coding-local", prompt=prompt)
+    )
+    assert response.status == "ok"
+    assert response.requested_route == "coding-local"
+    assert response.route == "general-local"
+
+
+def test_execute_does_not_reroute_when_no_profiles():
+    adapter = FakeAdapter(models={"qwen2.5-coder:3b"}, generated="ok")
+    response = _service(adapter).execute(_decision("coding-local"))
+    assert response.status == "ok"
+    assert response.route == "coding-local"
+
+
+def test_execute_does_not_reroute_when_no_constraints():
+    from routellm.configuration.providers import ProviderConfig, RouteProfile
+
+    config = ProviderConfig(
+        profiles={
+            "coding-local": RouteProfile(cost_per_1k_tokens=0.01),
+        },
+    )
+    adapter = FakeAdapter(models={"qwen2.5-coder:3b"}, generated="ok")
+    response = _service(adapter, config).execute(_decision("coding-local"))
+    assert response.status == "ok"
+    assert response.route == "coding-local"

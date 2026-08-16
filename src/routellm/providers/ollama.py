@@ -1,17 +1,22 @@
-"""Ollama provider adapter (Milestone 6).
+"""Ollama provider adapter (Milestone 6, extended in Milestone 7).
 
 Talks to a local Ollama server over its REST API using only the Python
 standard library (``urllib``), so no dependency is added. Prompt contents are
 never logged. The HTTP seam ``request(method, url, payload, timeout)`` returns
-``(status, body)`` and raises ``OllamaError`` on connection failures, which
+ ``(status, body)`` and raises ``OllamaError`` on connection failures, which
 lets the normal test suite run fully offline with injected fakes.
+
+Milestone 7 adds ``check_health()`` for provider health checks.
 """
 
 import json
+import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 
 from routellm.configuration.providers import OllamaConfig
+from routellm.domain.provider import HealthCheckResult
 
 
 class OllamaError(Exception):
@@ -108,3 +113,52 @@ class OllamaAdapter:
         if not isinstance(text, str) or not text:
             raise OllamaError(f"Ollama response from {url} contained no text.")
         return text
+
+    def check_health(
+        self, route: str, provider: str, model: str, *, timeout: float | None = None
+    ) -> HealthCheckResult:
+        """Check whether the server is up and the model is available.
+
+        Returns a ``HealthCheckResult`` with timing and availability data.
+        The server is considered down only when ``/api/tags`` itself fails;
+        if the server responds but the model is missing, ``available`` is
+        False rather than None.
+
+        ``timeout`` overrides the default ping timeout for this check.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        effective_timeout = timeout if timeout is not None else self._config.timeout_ping
+        start = time.perf_counter()
+        try:
+            url = self._endpoint("/api/tags")
+            status, body = self._request("GET", url, None, effective_timeout)
+            if status != 200:
+                raise OllamaError(f"Ollama returned HTTP {status} for {url}.")
+            data = _parse_json(body, url)
+            models = tuple(
+                name
+                for name in (entry.get("name") for entry in data.get("models", []))
+                if name
+            )
+            elapsed = (time.perf_counter() - start) * 1000
+            available = model in models
+            return HealthCheckResult(
+                route=route,
+                provider=provider,
+                model=model,
+                available=available,
+                response_time_ms=elapsed,
+                checked_at=now,
+                error=None if available else f"Model {model!r} not found on server.",
+            )
+        except OllamaError as error:
+            elapsed = (time.perf_counter() - start) * 1000
+            return HealthCheckResult(
+                route=route,
+                provider=provider,
+                model=model,
+                available=None,
+                response_time_ms=elapsed,
+                checked_at=now,
+                error=str(error),
+            )

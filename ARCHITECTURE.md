@@ -25,7 +25,7 @@ The operational layers are CLI, Application, Domain, Preprocessing/Signals/Class
 | Classification | Build features, train/predict with interchangeable traditional ML models, expose calibrated confidence metadata, and persist a `CascadeModel`. | Domain, configuration, approved ML/NLP libraries. |
 | Complexity | Estimate an ordinal prompt-complexity level from length and indicator signals; load the labeled evaluation set. | Domain, configuration, preprocessing, standard library. |
 | Routing | Apply the cascade policy to signal and classifier results and complexity-aware route selection: validated rules, then calibrated confidence against a validated threshold, then fallback; re-route `general_qa`/`summarization` to `reasoning` at high complexity. | Domain and configuration; never providers. |
-| Providers | Map a logical route to executable local/remote services. Milestone 6 implements a config-driven `ProviderRegistry` and an Ollama adapter (standard-library `urllib` only), plus single-hop unavailability fallback. | Domain, configuration, provider-specific clients. |
+| Providers | Map a logical route to executable local/remote services. Milestone 6 implements a config-driven `ProviderRegistry` and an Ollama adapter (standard-library `urllib` only), plus single-hop unavailability fallback. Milestone 7 adds health checks, capability profiles, cost-aware routing, and latency-aware routing. | Domain, configuration, provider-specific clients. |
 
 The CLI must never directly perform preprocessing, classification, routing, or provider calls. It calls the application layer, which orchestrates the use case and returns a `RouteDecision` for rendering.
 
@@ -97,6 +97,8 @@ RouteDecision
 ```
 
 Routing always selects a logical label such as `coding-local`. Execution is an optional downstream step: `ExecutionService` resolves that label through `ProviderRegistry` against a validated `ProviderConfig`, calls the Ollama adapter for the configured model, and reports a `ProviderResponse` (`ok`, `not_configured`, `unavailable`, or `error`). When the primary provider is unavailable, a configured single-hop fallback route is attempted before reporting `unavailable` (SPEC section 38). `RouteService` never touches providers, so the routing engine remains fully usable with no Ollama installation; a logical route is a label, not an instruction to execute a model, until execution is explicitly requested.
+
+Milestone 7 adds cost-aware and latency-aware routing via `RouteProfile` metadata (cost per 1k tokens, estimated latency, capabilities) and `RoutingConstraints` (max cost per prompt, max latency). The cascade policy applies these constraints after selecting a route, rerouting to a cheaper or faster alternative when the selected route violates a constraint and a suitable alternative exists. Health checks (`routellm health`) provide availability and response time data, persisted to `data/health/` for trend analysis.
 
 ## Architectural constraints
 

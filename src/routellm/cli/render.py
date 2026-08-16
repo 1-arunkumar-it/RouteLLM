@@ -5,7 +5,7 @@ from io import TextIOBase
 
 from routellm.application.classifier_service import TrainReport
 from routellm.application.execution_service import ProviderStatusRow
-from routellm.domain.provider import ProviderResponse
+from routellm.domain.provider import HealthCheckResult, ProviderResponse
 from routellm.domain.route_decision import RouteDecision
 from routellm.evaluation.benchmark import BenchmarkResult
 from routellm.evaluation.cascade_report import (
@@ -202,6 +202,8 @@ def _format_rate(rate: float | None) -> str:
 
 def format_benchmark_report(result: BenchmarkResult) -> str:
     """Render a benchmark run as plain text for the terminal."""
+    has_cost = any(row.total_cost is not None for row in result.rows)
+    has_provider_latency = any(row.provider_latency_ms is not None for row in result.rows)
     lines = [
         "Benchmark complete.",
         "",
@@ -210,17 +212,32 @@ def format_benchmark_report(result: BenchmarkResult) -> str:
         "",
         "Candidate metrics (validation split):",
     ]
-    lines.append(
+    header = (
         f"{'candidate':<26}{'acc':>8}{'f1':>8}{'low-conf':>9}"
         f"{'latency_ms':>12}{'size_bytes':>12}"
     )
+    if has_cost:
+        header += f"{'cost':>10}"
+    if has_provider_latency:
+        header += f"{'prov_lat':>10}"
+    lines.append(header)
     for row in result.rows:
         metrics = row.validation_metrics
-        lines.append(
+        line = (
             f"{row.name:<26}{metrics.accuracy:>8.3f}{metrics.macro_f1:>8.3f}"
             f"{_format_rate(metrics.low_confidence_rate):>9}"
             f"{row.mean_latency_ms:>12.3f}{row.size_bytes:>12d}"
         )
+        if has_cost:
+            cost_str = f"{row.total_cost:.6f}" if row.total_cost is not None else "n/a"
+            line += f"{cost_str:>10}"
+        if has_provider_latency:
+            if row.provider_latency_ms is not None:
+                pl_str = f"{row.provider_latency_ms:.1f}"
+            else:
+                pl_str = "n/a"
+            line += f"{pl_str:>10}"
+        lines.append(line)
     selected = next(row for row in result.rows if row.name == result.selected_name)
     test_metrics = selected.test_metrics
     lines.extend(
@@ -236,6 +253,35 @@ def format_benchmark_report(result: BenchmarkResult) -> str:
             f"  Macro F1: {test_metrics.macro_f1:.3f}",
         ]
     )
+    if result.cost_summary is not None:
+        cs = result.cost_summary
+        lines.extend(
+            [
+                "",
+                "Cost summary:",
+                f"  Total: ${cs.total:.6f}",
+                f"  Mean per prompt: ${cs.mean_per_prompt:.6f}",
+            ]
+        )
+        if cs.by_route:
+            lines.append("  By route:")
+            for route, cost in cs.by_route.items():
+                lines.append(f"    {route}: ${cost:.6f}")
+    if result.latency_summary is not None:
+        ls = result.latency_summary
+        lines.extend(
+            [
+                "",
+                "Latency summary:",
+                f"  Mean: {ls.mean_ms:.1f} ms",
+                f"  P50: {ls.p50_ms:.1f} ms",
+                f"  P95: {ls.p95_ms:.1f} ms",
+            ]
+        )
+        if ls.by_route:
+            lines.append("  By route:")
+            for route, lat in ls.by_route.items():
+                lines.append(f"    {route}: {lat:.1f} ms")
     return "\n".join(lines)
 
 
@@ -269,3 +315,44 @@ def render_complexity_evaluation(
         format_complexity_evaluation_report(report),
         file=out if out is not None else sys.stdout,
     )
+
+
+def format_health_check(results: tuple[HealthCheckResult, ...]) -> str:
+    """Render health check results as plain text."""
+    if not results:
+        return "No health check results."
+    header = ("route", "provider", "model", "available", "latency_ms", "error")
+    entries: list[tuple[str, str, str, str, str, str]] = []
+    for r in results:
+        available = "n/a" if r.available is None else ("yes" if r.available else "no")
+        latency = f"{r.response_time_ms:.1f}" if r.response_time_ms is not None else "n/a"
+        error = r.error if r.error else ""
+        entries.append((
+            r.route,
+            r.provider if r.provider is not None else "n/a",
+            r.model if r.model is not None else "n/a",
+            available,
+            latency,
+            error,
+        ))
+    widths = [
+        max(len(header[i]), max((len(e[i]) for e in entries), default=0))
+        for i in range(len(header))
+    ]
+    lines = [f"Health check ({results[0].checked_at}):"]
+    lines.append(
+        "  "
+        + "  ".join(f"{v:<{w}}" for v, w in zip(header, widths))
+    )
+    for entry in entries:
+        lines.append(
+            "  " + "  ".join(f"{v:<{w}}" for v, w in zip(entry, widths))
+        )
+    return "\n".join(lines)
+
+
+def render_health_check(
+    results: tuple[HealthCheckResult, ...], out: TextIOBase | None = None
+) -> None:
+    """Print health check results to the given stream (default: stdout)."""
+    print(format_health_check(results), file=out if out is not None else sys.stdout)

@@ -1,6 +1,6 @@
 # RouteLLM Roadmap
 
-Milestones 0–6 are complete. Later milestones describe sequencing, not
+Milestones 0–7 are complete. Later milestones describe sequencing, not
 permission for speculative work.
 
 ## Milestone 0 — Python project foundation
@@ -118,10 +118,24 @@ installation. Test suite: 257 passed; ruff clean.
 
 **Objective:** Evaluate only evidence-backed enhancements.
 
-**Deliverables:** candidate capabilities such as embeddings, hybrid scoring, subcategories, capability profiles, cost-aware policy, latency-aware policy, or provider health checks.
+**Status:** Complete. Four capabilities implemented with documented metrics and
+baseline comparisons: (1) provider health checks via `routellm health`, (2)
+model capability profiles via `[profiles]` TOML sections, (3) cost-aware
+routing via `[constraints]` and `RouteProfile` metadata, and (4) latency-aware
+routing using both estimated (profiles) and measured (history) data. The
+cascade policy applies constraints after selecting a route, rerouting to a
+cheaper or faster alternative when available. Test suite: 303 passed; ruff clean.
 
-**Prerequisites:** Measured baseline quality and an approved enhancement hypothesis.
+**Deliverables:** provider health checks with file persistence, capability
+profiles with cost/latency/capability metadata, cost-aware routing, latency-aware
+routing, and extended benchmark reporting with cost/latency summaries.
 
-**Acceptance criteria:** Each capability has a documented metric, comparison against baseline, and no regression in privacy or explainability.
+**Prerequisites:** Milestone 6 provider execution; measured baseline quality.
 
-**Out of scope:** unmeasured complexity, distributed orchestration, web UI, RAG, and broad framework adoption.
+**Acceptance criteria:** Each capability has a documented metric (health uptime,
+capability coverage, cost per prompt, latency per route), comparison against
+baseline (one-shot health, no profiles, no cost/latency consideration), and no
+regression in privacy or explainability.
+
+**Out of scope:** unmeasured complexity, distributed orchestration, web UI, RAG,
+and broad framework adoption.

@@ -16,6 +16,7 @@ from routellm.cli.render import (
     render_decision,
     render_evaluation_report,
     render_execution_result,
+    render_health_check,
     render_provider_status,
     render_train_report,
 )
@@ -80,6 +81,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--config",
         default=None,
         help="path to a provider configuration TOML file (default: built-in defaults)",
+    )
+    health_parser = subparsers.add_parser(
+        "health",
+        help="check provider health and save results to data/health/",
+    )
+    health_parser.add_argument(
+        "--config",
+        default=None,
+        help="path to a provider configuration TOML file (default: built-in defaults)",
+    )
+    health_parser.add_argument(
+        "--no-save",
+        action="store_true",
+        default=False,
+        help="print results without saving to file",
+    )
+    health_parser.add_argument(
+        "--history",
+        action="store_true",
+        default=False,
+        help="show the last 10 health check results from data/health/",
     )
     train_parser = subparsers.add_parser(
         "train",
@@ -221,6 +243,26 @@ def main(argv: list[str] | None = None) -> int:
             print(f"providers failed: {error}", file=sys.stderr)
             return 1
         render_provider_status(rows)
+        return 0
+    if args.command == "health":
+        if args.history:
+            from routellm.application.execution_service import load_health_history
+
+            results = load_health_history()
+            render_health_check(results)
+            return 0
+        try:
+            config = load_provider_config(args.config)
+            service = ExecutionService(config=config)
+            results = service.health_check()
+        except (ValueError, OSError) as error:
+            print(f"health failed: {error}", file=sys.stderr)
+            return 1
+        render_health_check(results)
+        if not args.no_save:
+            from routellm.application.execution_service import save_health_check
+
+            save_health_check(results)
         return 0
     if args.command == "train":
         try:

@@ -216,3 +216,203 @@ def test_load_cascade_model_rejects_other_objects(tmp_path):
     dump({"not": "cascade"}, path)
     with pytest.raises(ValueError, match="CascadeModel"):
         load_cascade_model(path)
+
+
+# --- Milestone 7: Cost-aware and latency-aware constraint tests ---
+
+
+def test_estimate_cost_returns_none_without_profile():
+    from routellm.configuration.providers import RouteProfile
+    from routellm.routing.cascade import estimate_cost
+
+    profile = RouteProfile()
+    assert estimate_cost(100, profile) is None
+
+
+def test_estimate_cost_calculates_correctly():
+    from routellm.configuration.providers import RouteProfile
+    from routellm.routing.cascade import estimate_cost
+
+    profile = RouteProfile(cost_per_1k_tokens=0.002)
+    cost = estimate_cost(100, profile)
+    assert cost is not None
+    assert cost == pytest.approx((100 * 1.3 / 1000) * 0.002)
+
+
+def test_apply_constraints_no_violation():
+    from routellm.configuration.providers import RouteProfile, RoutingConstraints
+    from routellm.routing.cascade import apply_constraints
+
+    profiles = {
+        "coding-local": RouteProfile(cost_per_1k_tokens=0.002, estimated_latency_ms=150),
+    }
+    constraints = RoutingConstraints(max_cost_per_prompt=0.1, max_latency_ms=500)
+    route, cost, latency = apply_constraints(
+        "coding-local", "coding", profiles, constraints, prompt_word_count=100
+    )
+    assert route == "coding-local"
+    assert cost is not None
+    assert latency == 150
+
+
+def test_apply_constraints_cost_violation_reroutes():
+    from routellm.configuration.providers import RouteProfile, RoutingConstraints
+    from routellm.routing.cascade import apply_constraints
+
+    profiles = {
+        "coding-local": RouteProfile(
+            cost_per_1k_tokens=0.01, estimated_latency_ms=150,
+            capabilities=frozenset({"code"})
+        ),
+        "general-local": RouteProfile(
+            cost_per_1k_tokens=0.001, estimated_latency_ms=100,
+            capabilities=frozenset({"code", "qa"})
+        ),
+    }
+    constraints = RoutingConstraints(max_cost_per_prompt=0.001)
+    route, cost, latency = apply_constraints(
+        "coding-local", "coding", profiles, constraints, prompt_word_count=100
+    )
+    assert route == "general-local"
+    assert cost is not None
+
+
+def test_apply_constraints_latency_violation_reroutes():
+    from routellm.configuration.providers import RouteProfile, RoutingConstraints
+    from routellm.routing.cascade import apply_constraints
+
+    profiles = {
+        "coding-local": RouteProfile(
+            cost_per_1k_tokens=0.002, estimated_latency_ms=1000,
+            capabilities=frozenset({"code"})
+        ),
+        "general-local": RouteProfile(
+            cost_per_1k_tokens=0.003, estimated_latency_ms=100,
+            capabilities=frozenset({"code", "qa"})
+        ),
+    }
+    constraints = RoutingConstraints(max_latency_ms=500)
+    route, cost, latency = apply_constraints(
+        "coding-local", "coding", profiles, constraints, prompt_word_count=100
+    )
+    assert route == "general-local"
+    assert latency == 100
+
+
+def test_apply_constraints_no_alternative_keeps_original():
+    from routellm.configuration.providers import RouteProfile, RoutingConstraints
+    from routellm.routing.cascade import apply_constraints
+
+    profiles = {
+        "coding-local": RouteProfile(
+            cost_per_1k_tokens=0.01, estimated_latency_ms=150,
+            capabilities=frozenset({"code"})
+        ),
+    }
+    constraints = RoutingConstraints(max_cost_per_prompt=0.001)
+    route, cost, latency = apply_constraints(
+        "coding-local", "coding", profiles, constraints, prompt_word_count=100
+    )
+    assert route == "coding-local"
+
+
+def test_apply_constraints_no_profile_returns_original():
+    from routellm.configuration.providers import RoutingConstraints
+    from routellm.routing.cascade import apply_constraints
+
+    profiles = {}
+    constraints = RoutingConstraints(max_cost_per_prompt=0.001)
+    route, cost, latency = apply_constraints(
+        "coding-local", "coding", profiles, constraints, prompt_word_count=100
+    )
+    assert route == "coding-local"
+    assert cost is None
+    assert latency is None
+
+
+def test_apply_constraints_skips_alternative_without_overlapping_capabilities():
+    from routellm.configuration.providers import RouteProfile, RoutingConstraints
+    from routellm.routing.cascade import apply_constraints
+
+    profiles = {
+        "coding-local": RouteProfile(
+            cost_per_1k_tokens=0.01, estimated_latency_ms=150,
+            capabilities=frozenset({"code"})
+        ),
+        "general-local": RouteProfile(
+            cost_per_1k_tokens=0.001, estimated_latency_ms=100,
+            capabilities=frozenset({"qa"})
+        ),
+    }
+    constraints = RoutingConstraints(max_cost_per_prompt=0.001)
+    route, cost, latency = apply_constraints(
+        "coding-local", "coding", profiles, constraints, prompt_word_count=100
+    )
+    assert route == "coding-local"
+
+
+def test_find_alternative_rejects_alternative_still_violating_cost_constraint():
+    from routellm.configuration.providers import RouteProfile, RoutingConstraints
+    from routellm.routing.cascade import apply_constraints
+
+    profiles = {
+        "coding-local": RouteProfile(
+            cost_per_1k_tokens=0.01, estimated_latency_ms=150,
+            capabilities=frozenset({"code"})
+        ),
+        "general-local": RouteProfile(
+            cost_per_1k_tokens=0.008, estimated_latency_ms=100,
+            capabilities=frozenset({"code", "qa"})
+        ),
+    }
+    constraints = RoutingConstraints(max_cost_per_prompt=0.001)
+    route, cost, latency = apply_constraints(
+        "coding-local", "coding", profiles, constraints, prompt_word_count=100
+    )
+    assert route == "coding-local"
+    assert cost is not None
+
+
+def test_find_alternative_rejects_alternative_still_violating_latency_constraint():
+    from routellm.configuration.providers import RouteProfile, RoutingConstraints
+    from routellm.routing.cascade import apply_constraints
+
+    profiles = {
+        "coding-local": RouteProfile(
+            cost_per_1k_tokens=0.002, estimated_latency_ms=1000,
+            capabilities=frozenset({"code"})
+        ),
+        "general-local": RouteProfile(
+            cost_per_1k_tokens=0.001, estimated_latency_ms=800,
+            capabilities=frozenset({"code", "qa"})
+        ),
+    }
+    constraints = RoutingConstraints(max_latency_ms=500)
+    route, cost, latency = apply_constraints(
+        "coding-local", "coding", profiles, constraints, prompt_word_count=100
+    )
+    assert route == "coding-local"
+    assert latency == 1000
+
+
+def test_apply_constraints_both_violated_picks_satisfying_alternative():
+    from routellm.configuration.providers import RouteProfile, RoutingConstraints
+    from routellm.routing.cascade import apply_constraints
+
+    profiles = {
+        "coding-local": RouteProfile(
+            cost_per_1k_tokens=0.01, estimated_latency_ms=1000,
+            capabilities=frozenset({"code"})
+        ),
+        "general-local": RouteProfile(
+            cost_per_1k_tokens=0.001, estimated_latency_ms=100,
+            capabilities=frozenset({"code", "qa"})
+        ),
+    }
+    constraints = RoutingConstraints(max_cost_per_prompt=0.001, max_latency_ms=500)
+    route, cost, latency = apply_constraints(
+        "coding-local", "coding", profiles, constraints, prompt_word_count=100
+    )
+    assert route == "general-local"
+    assert cost is not None
+    assert latency == 100

@@ -4,10 +4,12 @@ Each candidate is trained on the same training split and compared on the same
 validation split. The winner is chosen from validation metrics only, then
 evaluated once on the held-out test split. All measurements are real; nothing
 here is a hard-coded result.
+
+Milestone 7 adds cost and latency summary dataclasses for reporting.
 """
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,6 +33,8 @@ class BenchmarkRow:
 
     ``test_metrics`` is populated only for the selected candidate, which is
     evaluated once on the held-out test split after selection.
+
+    Milestone 7 adds optional cost and latency fields.
     """
 
     name: str
@@ -38,11 +42,37 @@ class BenchmarkRow:
     test_metrics: EvaluationReport | None
     mean_latency_ms: float
     size_bytes: int
+    total_cost: float | None = None
+    mean_cost_per_prompt: float | None = None
+    provider_latency_ms: float | None = None
+    capability_coverage: float | None = None
+
+
+@dataclass(frozen=True)
+class CostSummary:
+    """Aggregated cost metrics across the evaluation set."""
+
+    total: float
+    mean_per_prompt: float
+    by_route: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LatencySummary:
+    """Aggregated latency metrics across the evaluation set."""
+
+    mean_ms: float
+    p50_ms: float
+    p95_ms: float
+    by_route: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class BenchmarkResult:
-    """The complete, reproducible benchmark run."""
+    """The complete, reproducible benchmark run.
+
+    Milestone 7 adds optional cost and latency summaries.
+    """
 
     dataset_path: str
     fingerprint: str
@@ -54,6 +84,8 @@ class BenchmarkResult:
     selected_name: str
     rows: tuple[BenchmarkRow, ...]
     report_path: str
+    cost_summary: CostSummary | None = None
+    latency_summary: LatencySummary | None = None
 
     @property
     def selection_criterion(self) -> str:

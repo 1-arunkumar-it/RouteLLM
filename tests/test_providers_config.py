@@ -205,3 +205,202 @@ def test_load_provider_config_rejects_non_table_sections(tmp_path, body):
     path.write_text(body, encoding="utf-8")
     with pytest.raises(ValueError, match=r"section \[(routes|fallbacks|ollama)\] must be a table"):
         load_provider_config(str(path))
+
+
+# --- Milestone 7: Profile, constraint, and health config tests ---
+
+
+def test_default_config_has_empty_profiles_and_default_constraints():
+    config = ProviderConfig()
+    assert dict(config.profiles) == {}
+    assert config.constraints.max_cost_per_prompt is None
+    assert config.constraints.max_latency_ms is None
+    assert config.health.timeout == 5.0
+
+
+def test_route_profile_validation():
+    from routellm.configuration.providers import RouteProfile
+
+    profile = RouteProfile(cost_per_1k_tokens=0.002, estimated_latency_ms=150)
+    assert profile.cost_per_1k_tokens == 0.002
+    assert profile.estimated_latency_ms == 150
+    assert profile.capabilities == frozenset()
+
+
+def test_route_profile_rejects_negative_cost():
+    from routellm.configuration.providers import RouteProfile
+
+    with pytest.raises(ValueError, match="cost_per_1k_tokens"):
+        RouteProfile(cost_per_1k_tokens=-1.0)
+
+
+def test_route_profile_rejects_negative_latency():
+    from routellm.configuration.providers import RouteProfile
+
+    with pytest.raises(ValueError, match="estimated_latency_ms"):
+        RouteProfile(estimated_latency_ms=-100)
+
+
+def test_route_profile_rejects_unknown_capability():
+    from routellm.configuration.providers import RouteProfile
+
+    with pytest.raises(ValueError, match="Unknown capabilities"):
+        RouteProfile(capabilities=frozenset({"code", "unknown-thing"}))
+
+
+def test_route_profile_accepts_known_capabilities():
+    from routellm.configuration.providers import RouteProfile
+
+    profile = RouteProfile(capabilities=frozenset({"code", "reasoning", "qa"}))
+    assert profile.capabilities == frozenset({"code", "reasoning", "qa"})
+
+
+def test_routing_constraints_validation():
+    from routellm.configuration.providers import RoutingConstraints
+
+    c = RoutingConstraints(max_cost_per_prompt=0.05, max_latency_ms=500)
+    assert c.max_cost_per_prompt == 0.05
+    assert c.max_latency_ms == 500
+
+
+def test_routing_constraints_rejects_negative_cost():
+    from routellm.configuration.providers import RoutingConstraints
+
+    with pytest.raises(ValueError, match="max_cost_per_prompt"):
+        RoutingConstraints(max_cost_per_prompt=-1.0)
+
+
+def test_routing_constraints_rejects_negative_latency():
+    from routellm.configuration.providers import RoutingConstraints
+
+    with pytest.raises(ValueError, match="max_latency_ms"):
+        RoutingConstraints(max_latency_ms=-100)
+
+
+def test_health_config_validation():
+    from routellm.configuration.providers import HealthConfig
+
+    h = HealthConfig(timeout=10.0)
+    assert h.timeout == 10.0
+
+
+def test_health_config_rejects_non_number():
+    from routellm.configuration.providers import HealthConfig
+
+    with pytest.raises(ValueError, match="must be a number"):
+        HealthConfig(timeout="fast")
+
+
+def test_health_config_rejects_zero_timeout():
+    from routellm.configuration.providers import HealthConfig
+
+    with pytest.raises(ValueError, match="must be > 0"):
+        HealthConfig(timeout=0)
+
+
+def test_config_profiles_are_immutable():
+    from routellm.configuration.providers import RouteProfile
+
+    config = ProviderConfig(
+        profiles={"coding-local": RouteProfile(cost_per_1k_tokens=0.002)}
+    )
+    with pytest.raises(TypeError):
+        config.profiles["coding-local"] = RouteProfile()
+
+
+def test_config_rejects_profile_for_unknown_route():
+    from routellm.configuration.providers import RouteProfile
+
+    with pytest.raises(ValueError, match="Unknown route"):
+        ProviderConfig(profiles={"not-a-route": RouteProfile()})
+
+
+def test_load_provider_config_parses_profiles(tmp_path):
+    path = tmp_path / "profiles.toml"
+    path.write_text(
+        '[profiles.coding-local]\n'
+        'cost_per_1k_tokens = 0.002\n'
+        'estimated_latency_ms = 150\n'
+        'capabilities = ["code", "reasoning"]\n',
+        encoding="utf-8",
+    )
+    config = load_provider_config(str(path))
+    assert "coding-local" in config.profiles
+    profile = config.profiles["coding-local"]
+    assert profile.cost_per_1k_tokens == 0.002
+    assert profile.estimated_latency_ms == 150
+    assert profile.capabilities == frozenset({"code", "reasoning"})
+
+
+def test_load_provider_config_parses_constraints(tmp_path):
+    path = tmp_path / "constraints.toml"
+    path.write_text(
+        '[constraints]\n'
+        'max_cost_per_prompt = 0.05\n'
+        'max_latency_ms = 500\n',
+        encoding="utf-8",
+    )
+    config = load_provider_config(str(path))
+    assert config.constraints.max_cost_per_prompt == 0.05
+    assert config.constraints.max_latency_ms == 500
+
+
+def test_load_provider_config_parses_health(tmp_path):
+    path = tmp_path / "health.toml"
+    path.write_text(
+        '[health]\n'
+        'timeout = 10.0\n',
+        encoding="utf-8",
+    )
+    config = load_provider_config(str(path))
+    assert config.health.timeout == 10.0
+
+
+def test_load_provider_config_rejects_non_table_profile(tmp_path):
+    path = tmp_path / "bad.toml"
+    path.write_text(
+        'profiles = "not-a-table"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="section \\[profiles\\] must be a table"):
+        load_provider_config(str(path))
+
+
+def test_load_provider_config_rejects_non_table_constraints(tmp_path):
+    path = tmp_path / "bad.toml"
+    path.write_text(
+        'constraints = "not-a-table"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="section \\[constraints\\] must be a table"):
+        load_provider_config(str(path))
+
+
+def test_load_provider_config_rejects_non_table_health(tmp_path):
+    path = tmp_path / "bad.toml"
+    path.write_text(
+        'health = "not-a-table"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="section \\[health\\] must be a table"):
+        load_provider_config(str(path))
+
+
+def test_load_provider_config_rejects_non_dict_profile_entry(tmp_path):
+    path = tmp_path / "bad.toml"
+    path.write_text(
+        '[profiles]\ncoding-local = "not-a-table"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="must be a table"):
+        load_provider_config(str(path))
+
+
+def test_load_provider_config_rejects_non_list_capabilities(tmp_path):
+    path = tmp_path / "bad.toml"
+    path.write_text(
+        '[profiles.coding-local]\ncapabilities = "not-a-list"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="must be a list"):
+        load_provider_config(str(path))

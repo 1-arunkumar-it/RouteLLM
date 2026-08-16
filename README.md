@@ -4,7 +4,7 @@ RouteLLM is a Python, terminal-first learning project for building an explainabl
 
 ## Status
 
-In development. **Milestone 1: rule-based routing**, **Milestone 2: dataset + TF-IDF classifier**, **Milestone 3: classifier benchmarking**, **Milestone 4: cascaded routing**, **Milestone 5: complexity estimation**, and **Milestone 6: Ollama integration** are complete. The `routellm route` command classifies obvious prompts into a small category taxonomy using configurable keyword rules and selects a logical route. A hand-authored labeled dataset (245 prompts, 7 categories) supports a Logistic Regression + TF-IDF baseline classifier (`routellm train` and `routellm evaluate`) and a benchmark comparing it fairly against Linear SVM and Naive Bayes (`routellm benchmark`). The cascaded router (`routellm cascade`) combines validated rule evidence with a calibrated Linear SVM and a confidence threshold chosen from validation data, then `routellm route --model` routes through it with a truthful decision source. The complexity estimator (`routellm complexity`) blends prompt length and matched indicator signals into a `low`/`medium`/`high` level and re-routes high-complexity `general_qa`/`summarization` prompts to a `reasoning` route. `routellm run` executes a routed prompt through the configured provider (`routellm providers` lists routes and live availability); routing itself never requires Ollama. spaCy integration is not implemented yet.
+Complete. **Milestone 1: rule-based routing**, **Milestone 2: dataset + TF-IDF classifier**, **Milestone 3: classifier benchmarking**, **Milestone 4: cascaded routing**, **Milestone 5: complexity estimation**, **Milestone 6: Ollama integration**, and **Milestone 7: advanced routing** are complete. The `routellm route` command classifies obvious prompts into a small category taxonomy using configurable keyword rules and selects a logical route. A hand-authored labeled dataset (245 prompts, 7 categories) supports a Logistic Regression + TF-IDF baseline classifier (`routellm train` and `routellm evaluate`) and a benchmark comparing it fairly against Linear SVM and Naive Bayes (`routellm benchmark`). The cascaded router (`routellm cascade`) combines validated rule evidence with a calibrated Linear SVM and a confidence threshold chosen from validation data, then `routellm route --model` routes through it with a truthful decision source. The complexity estimator (`routellm complexity`) blends prompt length and matched indicator signals into a `low`/`medium`/`high` level and re-routes high-complexity `general_qa`/`summarization` prompts to a `reasoning` route. `routellm run` executes a routed prompt through the configured provider (`routellm providers` lists routes and live availability); routing itself never requires Ollama. `routellm health` checks provider availability and saves results for trend analysis. Cost-aware and latency-aware routing prefer cheaper or faster alternatives when constraints are violated.
 
 ## Planned technology stack
 
@@ -131,21 +131,56 @@ coding-local = "general-local"
 - Availability is model presence on the server (`/api/tags`). When the selected route's provider is unavailable, a configured single-hop fallback route is attempted; otherwise the command reports the real status (`ok`, `not_configured`, `unavailable`, `error`) without inventing a success (SPEC section 38).
 - The adapter uses only the Python standard library (`urllib`); the normal test suite runs fully offline with an injectable HTTP seam, so no Ollama installation is required to run the tests.
 
+### Advanced routing (Milestone 7)
+
+Milestone 7 adds cost-aware routing, latency-aware routing, provider health checks, and model capability profiles:
+
+```bash
+routellm health                          # check provider health + save
+routellm health --history                # show last 10 health checks
+routellm health --no-save                # check without saving
+```
+
+- `routellm health` pings each configured provider, reports availability and response time, and saves results to `data/health/` for trend analysis.
+- Cost-aware and latency-aware routing are configured via TOML profiles and constraints:
+
+```toml
+[profiles.coding-local]
+cost_per_1k_tokens = 0.002
+estimated_latency_ms = 150
+capabilities = ["code", "reasoning"]
+
+[profiles.general-local]
+cost_per_1k_tokens = 0.001
+estimated_latency_ms = 80
+capabilities = ["qa", "translation"]
+
+[constraints]
+max_cost_per_prompt = 0.05
+max_latency_ms = 500
+
+[health]
+timeout = 5
+```
+
+- When a selected route's cost or latency exceeds the configured constraint, the cascade policy reroutes to a cheaper or faster alternative with overlapping capabilities.
+- Benchmark reporting now includes optional cost and latency summaries.
+
 ## Intended structure
 
 ```text
 src/routellm/
-├── cli/            Terminal interface: skeleton (M0), route subcommand (M1), train/evaluate (M2), benchmark (M3), cascade (M4), complexity (M5), run/providers (M6)
-├── application/    Orchestrates the routing use case (M1/M4/M5), classifier training/evaluation/benchmarking (M2/M3), and provider execution (M6)
-├── domain/         Stable concepts: categories, routes, signals, RouteDecision, ClassifierPrediction, ComplexityEstimate (M5), ResolvedProvider/ProviderResponse (M6)
+├── cli/            Terminal interface: skeleton (M0), route subcommand (M1), train/evaluate (M2), benchmark (M3), cascade (M4), complexity (M5), run/providers (M6), health (M7)
+├── application/    Orchestrates the routing use case (M1/M4/M5), classifier training/evaluation/benchmarking (M2/M3), and provider execution (M6/M7)
+├── domain/         Stable concepts: categories, routes, signals, RouteDecision, ClassifierPrediction, ComplexityEstimate (M5), ResolvedProvider/ProviderResponse/HealthCheckResult/ProviderProfile (M6/M7)
 ├── preprocessing/  Prompt normalization and tokenization (M1)
 ├── signals/        Keyword/phrase rules and detection (M1)
 ├── classification/ Dataset, TF-IDF features, the baseline classifier, benchmark candidates, and the calibrated cascade model (M2/M3/M4)
 ├── complexity/     Heuristic complexity config, estimator, and labeled-set loading (M5)
-├── evaluation/     Classification metrics, reporting, benchmarking, rule precision, threshold selection, and complexity evaluation (M2/M3/M4/M5)
-├── routing/        Deterministic routing policy (M1) and the cascade policy (M4), complexity-aware route selection (M5)
-├── configuration/  Validated configuration, including CascadeConfig (M4) and provider config (M6)
-├── providers/      Provider registry and Ollama adapter (M6)
+├── evaluation/     Classification metrics, reporting, benchmarking, rule precision, threshold selection, complexity evaluation (M2/M3/M4/M5), and cost/latency summaries (M7)
+├── routing/        Deterministic routing policy (M1), cascade policy (M4), complexity-aware route selection (M5), and cost/latency constraint application (M7)
+├── configuration/  Validated configuration, including CascadeConfig (M4), provider config (M6), and profiles/constraints/health (M7)
+├── providers/      Provider registry and Ollama adapter (M6/M7)
 └── __main__.py
 tests/              Test suite
 data/               Versioned datasets (data/datasets) and local processed artifacts (data/processed)

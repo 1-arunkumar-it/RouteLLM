@@ -1,4 +1,4 @@
-"""Structured result of the routing use case."""
+"""Structured result of the routing use case (Milestone 6, extended in M7)."""
 
 from dataclasses import dataclass
 
@@ -15,6 +15,9 @@ class RouteDecision:
     ``source`` names the origin of the decision: ``"rules"``, ``"classifier"``,
     or ``"fallback"`` (Milestone 4). ``complexity`` (Milestone 5) is the
     heuristic estimate that may re-route a category to ``reasoning``.
+
+    Milestone 7 adds optional ``estimated_cost`` and ``estimated_latency_ms``
+    fields for cost-aware and latency-aware routing.
     """
 
     prompt: str
@@ -25,3 +28,5 @@ class RouteDecision:
     source: str = ""
     reason: str = ""
     complexity: ComplexityEstimate | None = None
+    estimated_cost: float | None = None
+    estimated_latency_ms: float | None = None
